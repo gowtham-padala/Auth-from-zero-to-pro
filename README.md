@@ -2,7 +2,7 @@
 
 **A complete concept book on authentication and authorization. No assumed knowledge.**
 
-> **📖 Read it online → https://gowtham-padala.github.io/auth-from-zero-to-pro/**  
+> **📖 Read it online → https://gowtham-padala.github.io/Auth-from-zero-to-pro/**  
 > A single-page reader with the whole book, sidebar navigation, and search. Or browse the Markdown below — every chapter links to the next.
 
 This is a book about how authentication and authorization actually work — written as a
