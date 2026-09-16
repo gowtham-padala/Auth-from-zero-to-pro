@@ -1,0 +1,229 @@
+[[H11]]
+= H11. OPA, Cedar, or just SQL?
+:status: draft
+:chapter-id: H11
+:builds-on: H06, H08
+
+== The spectrum
+
+----
+   Simpler ◄──────────────────────────────────────────────► More capable
+   inline    DB queries    library      policy engine    dedicated authz service
+   if/else   (SQL, RLS)    (Casbin,      (OPA/Rego,       (OpenFGA, SpiceDB,
+                            Oso)          Cedar)            AuthZed)
+   H01/H04   H10           —             H06/H11           H07/H08
+----
+
+The rule: *move right only when the pain to your left is real.* Each step buys expressiveness
+and central management at the cost of a new component to run, learn, and secure.
+
+'''
+
+== The options
+
+=== Just code / SQL / RLS -- start here
+
+For most applications, authorization is a function and a few database predicates:
+
+[,python]
+----
+def can(user, action, resource) -> bool:
+    if user.is_admin: return True
+    if action == "read":   return resource.owner == user or shared_with(resource, user)
+    if action == "write":  return resource.owner == user and not resource.locked
+    return False
+----
+
+Plus RLS for the unbypassable tenant filter (<<H10,H10>>). This is
+correct, fast, debuggable, and needs no new infrastructure. *The majority of applications
+never need more.* The failure of Team A is treating "just code" as embarrassing when it is
+often right.
+
+The moment to leave: when the _decision_ logic is duplicated across many enforcement points and
+drifting (<<H02,H02>>) -- which is Team B's failure. The fix for that is
+first "centralise the decision into one function," not "adopt a policy engine."
+
+=== Embedded library -- Casbin, Oso, Cerbos
+
+A library that gives you a policy model and a decision function inside your process:
+
+[,python]
+----
+# Oso-style
+oso.authorize(user, "read", document)   # raises if denied
+----
+
+*Buys:* a structured model (RBAC/ABAC/ReBAC patterns) without running a separate service;
+policies as data rather than scattered ``if``s. *Costs:* a dependency and a small learning
+curve. A good middle step when your rules outgrow inline code but you don't want new
+infrastructure.
+
+=== Policy engine -- OPA (Rego) or Cedar
+
+A general engine that evaluates policies expressed in a dedicated language, decoupled from your
+code (<<H06,H06>>):
+
+*OPA (Open Policy Agent)* -- uses *Rego*, a declarative query language. General-purpose:
+authorizes APIs, Kubernetes admission, Terraform plans, CI. Runs as a sidecar or library.
+
+[,rego]
+----
+package authz
+default allow := false
+allow if {
+  input.action == "read"
+  input.resource.owner == input.subject.id
+}
+allow if input.subject.roles[_] == "admin"
+----
+
+*Cedar (AWS)* -- a purpose-built _authorization_ language, designed to be *analysable*:
+typed, with tooling that can _prove_ properties about your policies (e.g. "no policy grants
+public write"). More constrained than Rego, and safer for exactly that reason.
+
+[,cedar]
+----
+permit(principal, action == Action::"read", resource)
+  when { resource.owner == principal };
+----
+
+|===
+|  | *OPA / Rego* | *Cedar*
+
+| Scope
+| General policy (any decision)
+| Authorization specifically
+
+| Language
+| Rego (powerful, quirky)
+| Cedar (typed, analysable)
+
+| Analysis
+| Limited
+| *Formal -- can prove properties*
+
+| Ecosystem
+| Huge (K8s, CI, cloud)
+| AWS-native (Verified Permissions), growing
+
+| Best when
+| Policy-as-code across your stack
+| Authorization you want to _verify_
+|===
+
+*Buys* (<<H06,H06>>): policy as code -- versioned, tested, reviewed, changeable without
+a deploy; one place for rules (<<H01,H01>>'s PAP); rich ABAC.
+*Costs:* a language to learn, an engine to operate, a network hop (as a sidecar), and the
+"who can access X?" problem stays hard.
+
+=== Dedicated authorization service -- OpenFGA, SpiceDB
+
+A ReBAC/Zanzibar system (<<H07,H07>>, <<H08,H08>>):
+relationships as data, a `check` API, global consistency.
+
+*Buys:* the sharing/inheritance model nothing else expresses, at scale
+(<<H04,H04>>). *Costs:* the most infrastructure -- a stateful service,
+data sync, the `list-objects` cost (<<H08,H08>>).
+
+'''
+
+== The decision tree
+
+----
+Is authorization "roles + own-your-stuff", roughly?
+│
+├── YES ──> Just code + RLS.  H10.  Don't add a system.  ← most apps
+│
+└── NO ──> What KIND of complexity?
+           │
+           ├── Cross-cutting ATTRIBUTE/context rules
+           │   (confidential + Legal + business hours) ──> ABAC engine:
+           │                                               OPA or Cedar.  H06
+           │   └── Want to PROVE policy properties? ──> Cedar.
+           │
+           ├── Sharing / hierarchy / RELATIONSHIPS
+           │   (Drive-style, folders→docs) ────────────> ReBAC service:
+           │                                               OpenFGA / SpiceDB.  H07/H08
+           │
+           └── Rules outgrowing if/else but no new
+               infra wanted ──────────────────────────> Embedded library
+                                                          (Oso, Casbin, Cerbos).
+----
+
+Read it as: *the model follows the requirement* (<<H06,H06>>,
+<<H07,H07>>). Attribute rules → policy engine. Relationship rules → ReBAC
+service. Neither, just growing → a library. Simple → code. Match the tool to the _kind_ of
+authorization you actually have, not to what's fashionable.
+
+'''
+
+== Regardless of the engine: PDP vs PEP
+
+Whatever you choose, the architecture from <<H01,H01>>/<<H02,H02>>
+holds:
+
+* *The engine is the PDP* (decision) -- OPA, Cedar, OpenFGA, or your own function.
+* *Your code is the PEP* (enforcement) -- it _calls_ the PDP and blocks, at the service layer,
+failing closed (<<H02,H02>>).
+
+A policy engine does not enforce anything -- it _answers questions_. You still have to ask it,
+everywhere it matters, and act on the answer. Adopting OPA does not fix a missing check
+(<<H14,H14>>); it centralises the _logic_ of the checks you
+still have to write.
+
+Two more universals:
+
+* *Fail closed.* If the engine is unreachable, deny (<<H02,H02>>). A
+policy sidecar going down must not open your doors.
+* *Cache decisions carefully.* A network call per authorization is latency; caching is
+correctness risk (stale grants). Short TTLs, and invalidate on grant changes.
+
+'''
+
+== The honest recommendation
+
+. *Start with code + RLS.* Resist the urge to adopt a system before you feel the pain. Team
+A's mistake is the common one among engineers who've read this track.
+. *When decision logic duplicates and drifts, centralise it into one function first* -- that
+alone fixes Team B, without new infrastructure.
+. *Adopt an engine when the _kind_ of rule demands it:* a policy engine for attribute rules,
+a ReBAC service for sharing. Let the requirement pick the tool.
+. *Prefer analysable tools where you can* (Cedar over Rego, if the fit is right) -- being able
+to _prove_ "no policy grants public write" is worth a lot.
+
+There is no prize for the most sophisticated authorization stack. There is a prize for one you
+can reason about, that a forgotten check fails closed on, and that answers "who can do what?"
+when an auditor asks (<<I11,I11>>).
+
+'''
+
+== Terms defined in this chapter
+
+`OPA`, `Rego`, `Cedar`, `policy as code`
+
+'''
+
+== What to remember
+
+. The question is *"how much machinery does _this_ system justify?"* -- and both over- and
+under-engineering are common failures.
+. *Start with code + RLS.* Most applications never need more.
+. When rules *duplicate and drift, centralise the decision into one function* before
+reaching for an engine.
+. *The model follows the requirement:* attribute/context rules → *OPA or Cedar*;
+sharing/hierarchy → *OpenFGA/SpiceDB*; growing-but-simple → an *embedded library*.
+. *Cedar is analysable* -- you can prove policy properties; prefer it where it fits.
+. *The engine is the PDP; your code is the PEP.* An engine centralises logic; it does not
+enforce or fix a missing check.
+. *Fail closed* if the engine is unreachable; cache decisions with short TTLs.
+
+'''
+
+== Sources
+
+* https://www.openpolicyagent.org/docs/latest/[Open Policy Agent (OPA) / Rego]
+* https://www.cedarpolicy.com/[Cedar Policy Language] and https://aws.amazon.com/verified-permissions/[AWS Verified Permissions]
+* https://openfga.dev/[OpenFGA] / https://authzed.com/[SpiceDB] (<<H08,H08>>)
+* https://www.osohq.com/[Oso] / https://cerbos.dev/[Cerbos] / https://casbin.org/[Casbin] -- embedded options
+
+'''

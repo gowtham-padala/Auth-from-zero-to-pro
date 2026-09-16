@@ -1,0 +1,212 @@
+[[K06]]
+= K06. Where to go next: specs, papers, and staying current
+:status: draft
+:chapter-id: K06
+
+*Part K · Capstone* · _Builds on <<K05,K05>>_
+
+____
+The last chapter. You've built and broken all five layers. This is how to keep learning, where the
+authoritative sources are, and how to stay current in a field that moves.
+____
+
+'''
+
+== You now know the whole graph
+
+143 chapters ago, this book started with a byte (<<B01,B01>>).
+It ends with AI agents authenticating to tools over MCP (<<J08,J08>>) --
+and the last chapter's reassurance was that MCP is _built entirely from the fundamentals in the
+earlier chapters._ That's the meta-lesson: *auth is not a pile of disconnected specs. It's a small
+set of primitives -- hashing, randomness, MACs, signatures, certificates (<<B01,Track B>>) --
+arranged into five layers (<<C01,C01>>), over and over.*
+Every new development you'll meet is those primitives rearranged. You have the graph now; new nodes
+attach to it.
+
+'''
+
+== The primary sources, by track
+
+The authoritative references -- read the _spec_, not a blog summary of it, when something matters
+(<<K05,K05>>, link:../../appendix/rfc-index.md[appendix/rfc-index.md]):
+
+|===
+| Track | Read first
+
+| *A* (web)
+| https://developer.mozilla.org/en-US/docs/Web/HTTP[MDN HTTP]; Grigorik, _High Performance Browser Networking_ (free)
+
+| *B* (crypto)
+| Wong, _Real-World Cryptography_; Aumasson, _Serious Cryptography_; https://cryptopals.com/[Cryptopals]
+
+| *C* (map)
+| Wilson & Hingnikar, _Solving Identity Management in Modern Applications_ (2nd ed) -- *the structural spine*
+
+| *D* (authn)
+| https://thecopenhagenbook.com/[The Copenhagen Book]; https://csrc.nist.gov/pubs/sp/800/63/b/4/final[NIST SP 800-63B-4]; https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html[OWASP Auth Cheat Sheet]; https://passkeys.dev/[passkeys.dev]
+
+| *E* (sessions/JWT)
+| The Copenhagen Book; https://www.rfc-editor.org/rfc/rfc7519[RFC 7519]/https://www.rfc-editor.org/rfc/rfc7515[7515]; https://www.rfc-editor.org/rfc/rfc8725[RFC 8725]; OWASP Session Cheat Sheet
+
+| *F* (OAuth)
+| https://oauth.net/[oauth.net] (Parecki); https://www.rfc-editor.org/rfc/rfc6749[RFC 6749]; *https://www.rfc-editor.org/rfc/rfc9700[RFC 9700]* (Security BCP); Richer & Sanso, _OAuth 2 in Action_
+
+| *G* (federation)
+| https://openid.net/specs/openid-connect-core-1_0.html[OpenID Connect Core]; https://csrc.nist.gov/pubs/sp/800/63/c/4/final[NIST SP 800-63C]; OASIS SAML Technical Overview
+
+| *H* (authz)
+| https://research.google/pubs/pub48190/[Google Zanzibar paper]; https://zanzibar.academy/[zanzibar.academy]; https://openfga.dev/[OpenFGA docs]; OPA/Cedar docs
+
+| *I* (ops)
+| https://www.rfc-editor.org/rfc/rfc7644[RFC 7644] (SCIM); _Solving Identity Management_; cloud KMS docs
+
+| *J* (machine/agent)
+| https://www.rfc-editor.org/rfc/rfc8705[RFC 8705] (mTLS); https://www.rfc-editor.org/rfc/rfc9449[RFC 9449] (DPoP); https://spiffe.io/[SPIFFE]; https://modelcontextprotocol.io/specification/draft/basic/authorization[MCP auth spec]
+
+| *K* (capstone)
+| Madden, _API Security in Action_ -- *the best technical writing in the field*; https://www.rfc-editor.org/rfc/rfc9700[RFC 9700]; https://owasp.org/www-project-application-security-verification-standard/[OWASP ASVS] ch. 2, 3, 7
+|===
+
+Two books carry disproportionate weight (link:../../SOURCES.md[SOURCES.md]): *Solving Identity
+Management in Modern Applications* -- the only book whose structure maps onto all five layers -- and
+*API Security in Action* -- the reference for the technical work in E, F, and H.
+
+'''
+
+== How to read a spec
+
+RFCs are dense but authoritative, and learning to read them is what separates people who _know_ auth
+from people who've read blogs about it:
+
+* *RFC 2119 keywords* -- `MUST`, `SHOULD`, `MAY` have precise meanings. `MUST` is a requirement;
+`SHOULD` is a strong recommendation with rare exceptions; `MAY` is optional. The security is
+usually in the ``MUST``s (<<J08,J08>>).
+* *The Security Considerations section* is where the attacks and mitigations live -- read it first
+when evaluating whether you're using a spec safely.
+* *BCPs (Best Current Practice)* like https://www.rfc-editor.org/rfc/rfc9700[RFC 9700] distil
+years of vulnerabilities into requirements -- often more useful than the original spec, because
+they encode what went wrong.
+* *Drafts* (https://datatracker.ietf.org/[datatracker.ietf.org]) are where the field is heading
+-- OAuth 2.1, MCP, and browser-based-apps guidance are all drafts you should track.
+
+'''
+
+== Staying current: what's actually moving
+
+The evergreen fundamentals (<<B01,Track B>>, five layers)
+won't change. These _are_ moving, and are worth watching (link:../../README.md[README] dated them):
+
+|===
+| Area | Status (2026) | Watch
+
+| *Passkeys*
+| Mainstream; WebAuthn L3 (Related Origins, Signal API)
+| https://passkeys.dev/[passkeys.dev], https://www.w3.org/TR/webauthn-3/[W3C WebAuthn]
+
+| *OAuth 2.1*
+| Stable draft, not yet an RFC
+| https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1[datatracker]
+
+| *Agent / MCP auth*
+| Fast-moving frontier
+| https://modelcontextprotocol.io/specification/[MCP spec], the https://github.com/modelcontextprotocol/ext-auth[ext-auth repo]
+
+| *Sender-constrained tokens*
+| DPoP RFC published; adoption growing
+| https://www.rfc-editor.org/rfc/rfc9449[RFC 9449]
+
+| *Certificate lifetimes*
+| Shrinking to 47 days by 2029
+| https://cabforum.org/[CA/Browser Forum]
+
+| *Post-quantum*
+| Migration beginning
+| (out of scope here -- a dated blog post is the right medium)
+|===
+
+How to keep up without drowning: *follow the working groups, not the hype.* The IETF OAuth WG, the
+W3C WebAuthn WG, the OpenID Foundation, and the FIDO Alliance are where the real changes happen.
+Aaron Parecki (oauth.net), the OWASP cheat sheets, and the primary-source authors above are reliable
+signal.
+
+'''
+
+== The honest note on getting it wrong
+
+The book's uncomfortable truth (link:../../README.md[README]): *auth content that is subtly wrong
+causes breaches in other people's products.* Tracks A--E most people can write correctly from
+experience; Tracks F, G, H, and J are where subtle errors hide, and where a mistake in _your_ code
+harms _your users_.
+
+So, three habits for the rest of your career:
+
+. *Anchor to primary sources.* When it matters, read the RFC, the NIST publication, the W3C rec --
+not a summary. This book anchored every normative claim to one; do the same in your own work.
+. *Get the F/G/H/J work reviewed.* For anything high-stakes in delegation, federation,
+authorization, or machine/agent identity, budget for expert review before shipping
+(<<C05,C05>>, <<I07,I07>>). Name the reviewer;
+it does more for credibility than any amount of polish.
+. *Test the failure modes.* Turn the failure-mode chapters into a regression suite
+(<<I07,I07>>) and run it on every change. The attacks don't go stale.
+
+'''
+
+== What was deliberately left out
+
+So you know the edges of what you've learned (link:../../appendix/excluded.md[appendix/excluded.md]):
+cryptographic _implementation_ (you learned what AES does, never how to build it -- "don't roll your
+own crypto," taught by not teaching it); post-quantum migration (real, moving too fast for
+evergreen material); DIDs and verifiable credentials (a separate curriculum); vendor-specific
+configuration (rots in months); and network-layer security below TLS. If you meet these, you're at a
+different edge of the graph -- go learn them from _their_ primary sources.
+
+'''
+
+== The end, and the beginning
+
+You started not knowing what a byte was. You can now build a login you won't regret, keep someone
+logged in safely, let one app act for a user on another, accept another system's authentication,
+decide what a known user may do, run all of it in production, and authenticate machines and AI
+agents -- and you can _break_ every one of those, which is how you know you understand it.
+
+More than any specific technique, you have the *map* (<<C01,C01>>):
+five separable problems, a small set of cryptographic primitives, and the judgement to know which
+tool each situation needs (<<K05,K05>>). New specs will come -- post-quantum,
+whatever succeeds MCP, standards not yet drafted. They'll attach to the graph you now hold, and
+you'll read them as arrangements of primitives you already understand.
+
+That's the whole of it. Auth, from zero to pro.
+
+Go build something, and break it before someone else does.
+
+'''
+
+== What to remember
+
+. *Auth is a small set of primitives, arranged into five layers, over and over.* New developments
+attach to the graph you now hold.
+. *Two books carry disproportionate weight:* _Solving Identity Management in Modern Applications_
+(the five-layer spine) and _API Security in Action_ (the technical reference).
+. *Read the spec, not the summary, when it matters* -- and read the Security Considerations first.
+The security is in the ``MUST``s.
+. *Watch the working groups, not the hype* -- IETF OAuth, W3C WebAuthn, OpenID Foundation, FIDO.
+. *The fundamentals are evergreen; passkeys, OAuth 2.1, and agent/MCP auth are what's moving.*
+. *F/G/H/J is where subtle errors hide* -- anchor to primary sources, get it reviewed, run the
+failure-mode regression suite.
+. *You have the map.* That's what makes you a pro -- not any single technique.
+
+'''
+
+== Sources
+
+* link:../../SOURCES.md[SOURCES.md] -- the full reading list by track
+* link:../../appendix/rfc-index.md[appendix/rfc-index.md] -- every spec, what it's for
+* link:../../appendix/excluded.md[appendix/excluded.md] -- the boundary of scope
+* Everything cited throughout this book -- anchored to primary sources, on purpose
+
+'''
+
+_Auth, from Zero to Pro -- complete. 143 chapters, eleven tracks, one running application, built and
+broken end to end._
+
+*Back to:* link:../../README.md[the table of contents] · link:../../GLOSSARY.md[the glossary] · link:../../appendix/decision-tree.md[the decision tree]

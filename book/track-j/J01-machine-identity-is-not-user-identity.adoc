@@ -1,0 +1,169 @@
+[[J01]]
+= J01. Machine identity is not user identity
+:status: draft
+:chapter-id: J01
+
+*Part J · Machine, workload & agent identity* · _Builds on <<F10,F10>>_
+
+____
+Auth when there's no human at all. And a note that this is where the field is moving --
+machine and agent identities now vastly outnumber human ones.
+____
+
+'''
+
+== Why they're different
+
+----
+   USER IDENTITY                          MACHINE IDENTITY
+   ─────────────                          ────────────────
+   A human, who...                        Software, which...
+   • can prove presence (MFA)             • cannot — no human to prompt   D11
+   • forgets passwords → recovery         • has no memory to jog; no recovery flow
+   • logs in interactively (browser)      • runs headless; no redirect flow  F10
+   • is one person                        • may be thousands of instances, ephemeral
+   • leaves the company (a clear event)   • is decommissioned (no clear event)  I01/I03
+   • ~thousands per org                   • ~millions per org, and growing fast
+----
+
+The differences aren't cosmetic -- they invalidate the tools:
+
+* *No second factor is possible.* A machine can't receive an SMS or touch a security key
+(<<D11,D11>>, <<D14,D14>>).
+So "MFA everywhere" (<<D18,D18>>) doesn't apply -- and shoving a
+machine into a system that expects MFA means turning MFA _off_ for it, which is worse.
+* *No interactive login.* The authorization code flow (<<F03,F03>>)
+assumes a browser and a human to consent. Machines use *client credentials*
+(<<F10,F10>>) -- a flow _designed_ for no human -- precisely
+because there's no one to redirect.
+* *No password recovery.* A human forgetting a password is normal (<<D09,D09>>);
+a machine "forgetting" is a bug. Machine credentials are provisioned and rotated
+(<<I06,I06>>), never "recovered."
+* *Scale and ephemerality.* One human is one identity for years; a machine may be ten thousand
+short-lived container instances that come and go in minutes. Static credentials don't fit --
+which is what drives workload identity (<<J05,J05>>).
+
+'''
+
+== Machine identity is now the majority
+
+The industry framing worth internalising: in a modern cloud environment, *machine identities
+outnumber human ones by a large and growing factor.* Every microservice, container, function,
+CI job, and now every AI agent (<<J07,J07>>) is an identity that needs to
+authenticate. Managing them with tools built for humans -- user accounts, passwords, manual
+provisioning -- doesn't scale and produces this human-vs-machine mismatch, at scale.
+
+This is why Track J exists as a distinct track: machine identity is not an edge case of user
+identity. It's a larger problem with its own tools (<<J02,J02>>--<<J06,J06>>),
+its own lifecycle (<<J03,J03>>, <<I01,I01>>),
+and -- with agents (<<J07,J07>>, <<J08,J08>>) -- its own
+frontier.
+
+'''
+
+== What machines use instead
+
+The right tools for machine identity, each a chapter:
+
+|===
+| Need | Tool | Chapter
+
+| Simple caller identification
+| *API keys* (done properly)
+| <<J02,J02>>
+
+| A non-human account in a human system
+| *Service accounts* (carefully)
+| <<J03,J03>>
+
+| Machine-to-machine OAuth
+| *Client credentials grant*
+| <<F10,F10>>
+
+| Mutual authentication at the transport
+| *mTLS*
+| <<J04,J04>>
+
+| Identity for ephemeral workloads at scale
+| *SPIFFE/SPIRE, cloud workload identity*
+| <<J05,J05>>
+
+| Verifying inbound calls (webhooks)
+| *Signature verification*
+| <<J06,J06>>
+
+| An AI agent acting for a user
+| *Delegation + agent auth*
+| <<J07,J07>>
+|===
+
+The organising principle: *the best machine credential is one the platform issues and rotates
+automatically, scoped tightly, with no long-lived secret to store.* That's the throughline from
+<<I05,I05>> (don't hold the secret) and <<F10,F10>>
+(prefer workload identity to a static secret), and it culminates in
+<<J05,J05>>.
+
+'''
+
+== The principles that carry over -- and the ones that don't
+
+*Carry over from human identity:*
+
+* *Least privilege* (<<H01,H01>>) -- even more important for
+machines, because an over-scoped service account is a bigger blast radius than most user
+accounts (<<I10,I10>>) and nobody's watching it.
+* *Lifecycle management* (<<I01,I01>>) -- machines join, change,
+and leave too, and their _leaver_ problem is worse (no departure event --
+<<I03,I03>>).
+* *Rotation* (<<I06,I06>>) -- machine credentials must rotate; the
+"never rotate the robot's password" instinct is exactly the failure.
+* *Audit* (<<H13,H13>>) -- every machine action attributable to a
+machine identity.
+
+*Do NOT carry over:*
+
+* *MFA / interactive login* -- impossible; use cryptographic proof instead
+(<<J04,J04>>, <<J05,J05>>).
+* *Password recovery* -- provision fresh, don't recover.
+* *"One account per entity" as a human account* -- a service is not a user; don't create it in
+the user table with a password (<<J03,J03>>).
+
+The core mistake is applying the _human_ tools (password, MFA-or-disable,
+user account, no rotation) to a _machine_. Applying the machine tools (client credentials, mTLS,
+workload identity, tight scope, auto-rotation) is the fix.
+
+'''
+
+== Terms defined in this chapter
+
+`machine identity`, `workload`
+
+'''
+
+== What to remember
+
+. *Machine identity is not user identity* -- different properties (no MFA, no interactive login,
+no recovery, massive scale, ephemeral), which invalidate the human tools.
+. *Treating a machine like a human* -- a user account with a password that never rotates, MFA
+disabled, no owner -- is the core failure and produces orphans, weak accounts, and sprawl.
+. *Machines now vastly outnumber humans* as identities; managing them with human tools doesn't
+scale.
+. *Use the machine tools:* API keys done right (<<J02,J02>>), client credentials
+(<<F10,F10>>), mTLS (<<J04,J04>>), workload identity
+(<<J05,J05>>).
+. *The best machine credential is platform-issued, auto-rotated, and tightly scoped* -- no
+long-lived secret to store (<<I05,I05>>).
+. *Least privilege, lifecycle, rotation, and audit carry over* -- and matter _more_, because
+nobody's watching a service account.
+. *MFA, interactive login, and password recovery do not carry over* -- replace them with
+cryptographic proof.
+
+'''
+
+== Sources
+
+* https://www.rfc-editor.org/rfc/rfc6749#section-4.4[RFC 6749 §4.4 -- Client Credentials Grant] (<<F10,F10>>)
+* https://spiffe.io/docs/latest/spiffe-about/overview/[SPIFFE -- Secure Production Identity Framework] (<<J05,J05>>)
+* https://csrc.nist.gov/pubs/sp/800/63/4/final[NIST SP 800-63-4 (Base) -- non-person entities]
+
+'''

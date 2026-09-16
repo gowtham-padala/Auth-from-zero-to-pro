@@ -1,0 +1,188 @@
+[[H14]]
+= H14. Broken access control: IDOR, privilege escalation, mass assignment
+:status: draft
+:chapter-id: H14
+
+*Part H · Authorization* · _Builds on <<H09,H09>>, <<H04,H04>>_
+
+____
+*IDOR is statistically the most common serious vulnerability in real applications.* Broken
+access control is #1 in the OWASP Top 10 (<<H01,H01>>). This chapter is
+the failure modes of authorization: what they are, why they happen, and how they are prevented.
+____
+
+'''
+
+== Why it matters
+
+An authenticated user requests their own document, then changes one number:
+
+----
+GET /api/documents/9182   →  200 OK   (their document)
+GET /api/documents/9183   →  200 OK   (someone else's)
+----
+
+The user was authenticated. The endpoint even checked they had the `documents:read` _role_. What it
+did not check is whether _this_ document is _theirs_ (<<C02,C02>>).
+That single missing check is the most common serious flaw in software, and this chapter is the small
+family of failures it belongs to.
+
+'''
+
+== IDOR -- the object check that isn't there
+
+*IDOR* -- Insecure Direct Object Reference. Change an identifier in a request and receive an object
+that isn't yours. In API terms the same flaw is called *BOLA* (Broken Object Level Authorization),
+#1 in the OWASP API Top 10.
+
+*Why it is so common.* The ID _looks_ like it came from your UI, and your UI only ever shows a user
+their own objects. But the request does not come from your UI -- it comes from whoever holds the
+session, typing any ID (<<A07,A07>>). Authentication and a _role_ check
+feel sufficient, so the _object_ check is skipped.
+
+*Where it hides:*
+
+----
+   Every GET/PUT/PATCH/DELETE that takes an object ID — path, query, body, or header
+   Nested resources:  /documents/42/comments/99   (both IDs need checking)
+   Bulk endpoints:    ?ids=1,2,3                    (each one checked?)
+   GraphQL:           every field resolver, not just the endpoint
+   The "other paths":  CSV export, search, background jobs, the legacy API
+   Cross-tenant:      tenant A reading tenant B's object — the worst case  (H09)
+----
+
+*The mental test* (<<C02,C02>>): take a valid session for
+user A, request user B's resource. What stops it? If the answer is "our UI wouldn't show that ID,"
+you have an IDOR.
+
+*The prevention.* Object-level authorization at the service layer, on _every_ object access
+(<<H02,H02>>) -- `if not can(actor, action, object): forbid` -- with row-level
+security as the unbypassable backstop for tenant isolation
+(<<H10,H10>>). *Unguessable IDs help but are not a fix* -- IDs leak, in URLs,
+`Referer` headers, logs, and shared links (<<H09,H09>>). And when the
+_existence_ of a resource is sensitive, return `404` rather than `403` so an attacker can't map your
+ID space (<<A03,A03>>).
+
+'''
+
+== Privilege escalation -- gaining permissions you weren't granted
+
+Two directions:
+
+* *Vertical* -- a regular user reaching admin functionality. Root causes: an endpoint that isn't
+behind a check (which is why *deny by default* matters -- <<H01,H01>>), a
+rule that guards `POST /admin/*` but not `PUT /admin/*` (*authorize the operation, not the
+verb-and-path* -- <<A03,A03>>), or letting the client
+set its own role.
+* *Horizontal* -- acting as another peer user, which is IDOR by another name.
+
+A subtle escalation lives in *sharing itself*: if a _viewer_ can grant themselves _owner_, sharing
+was not treated as an authorized action (<<H03,H03>>). "Who may share,
+and to what level?" is a permission check like any other.
+
+*The prevention.* Deny by default (<<H01,H01>>); authorize the _operation_;
+never let the client assign roles; and check that granting is itself permitted.
+
+'''
+
+== Mass assignment -- fields the form never showed
+
+An update handler binds request fields straight to model attributes:
+
+----
+PATCH /api/users/me
+{ "name": "Alice", "is_admin": true, "tenant_id": "...", "credits": 999999 }
+----
+
+The form only has a name field -- but the request isn't the form
+(<<A07,A07>>). If the handler binds the whole body, `is_admin` lands,
+and the user is now an administrator (<<D05,D05>>). It
+also enables cross-tenant moves (`tenant_id`), verification bypass (`email_verified`), and
+business-logic abuse (`credits`).
+
+*The prevention.* An explicit *allowlist* of bindable fields -- parse the request into a typed
+object containing only the fields a user may set, so `is_admin` has nowhere to go
+(<<D05,D05>>). Never bind request bodies directly to
+models, and apply the allowlist to _update_ handlers, not just registration -- update paths are
+usually written less carefully.
+
+'''
+
+== Forced browsing -- "hidden" is not "protected"
+
+An endpoint exists but isn't linked -- a `/debug` route, an internal API, an old `/api/v1` with weaker
+checks. Reaching it directly is *forced browsing*, and it works because _hiding_ something is not
+_protecting_ it (<<A07,A07>>).
+
+*The prevention.* Deny by default, so an unprotected route is _broken_, not _open_
+(<<H01,H01>>); remove debug and internal endpoints from production; and apply
+authorization uniformly across API versions -- a `v2` check means nothing if `v1` still serves the
+data.
+
+'''
+
+== The pattern behind all of them
+
+Every failure here is the same shape: *a path to the data that skips the object-level check.* The
+controller checks; the export, the GraphQL resolver, the background job, and the legacy endpoint do
+not (<<H02,H02>>). So the fix is architectural, not per-handler:
+
+----
+   Enforce object-level authorization at the SERVICE LAYER — the one door every
+   entry point passes through — and back it with ROW-LEVEL SECURITY in the database.
+   Then no path can forget the check.                                   H02 / H10
+----
+
+Combined with *deny by default* and *fail closed* (<<H01,H01>>), this
+turns the most common class of vulnerability from "prevented on the paths someone remembered" into
+"structurally hard to introduce."
+
+'''
+
+== The verification checklist
+
+For any system, confirm -- in tests that assert access is _refused_, not just granted
+(<<I07,I07>>):
+
+----
+☐ Every object-ID endpoint checks ownership/authorization       C02 / H02
+☐ Cross-tenant access is blocked (the worst case)               H09
+☐ Nested and bulk endpoints check EACH id
+☐ Exports, search, GraphQL, jobs, and legacy APIs authorize too H02
+☐ Deny by default: admin/debug/legacy routes are protected      H01
+☐ Operation authorized, not verb+path (no method confusion)     A03
+☐ Sharing/granting is itself authorized (no viewer→owner)       H03
+☐ Explicit field allowlist on create AND update                 D05
+☐ 404 (not 403) hides existence where it's sensitive            A03 / H09
+----
+
+'''
+
+== Terms defined in this chapter
+
+`IDOR`, `BOLA`, `privilege escalation`, `mass assignment`, `forced browsing`
+
+'''
+
+== What to remember
+
+. *IDOR/BOLA is the most common serious vulnerability* -- a missing _object_ check behind a passing
+_authentication_ and _role_ check.
+. *Cross-tenant IDOR is the worst case* -- company A reads company B's data
+(<<H09,H09>>).
+. *Object-level authorization at the service layer + RLS* is the fix
+(<<H02,H02>>, <<H10,H10>>). Unguessable IDs are not.
+. *Privilege escalation:* deny by default, authorize the operation (not verb+path), gate sharing.
+. *Mass assignment:* an explicit field allowlist, on create _and_ update.
+. *Forced browsing:* hidden ≠ protected -- deny by default makes a forgotten route _broken_, not
+_open_.
+. Every failure is "a path that skips the check." Fix it *architecturally*, not per-handler.
+
+'''
+
+== Sources
+
+* https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/[OWASP API Security Top 10 -- API1:2023 BOLA], https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/[API3 Mass Assignment], https://owasp.org/API-Security/editions/2023/en/0xa5-broken-function-level-authorization/[API5 BFLA]
+* https://owasp.org/Top10/A01_2021-Broken_Access_Control/[OWASP Top 10 -- A01: Broken Access Control]
+
+'''

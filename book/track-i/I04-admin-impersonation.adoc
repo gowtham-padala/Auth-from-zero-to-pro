@@ -1,0 +1,213 @@
+[[I04]]
+= I04. Admin impersonation: letting support log in as a user, safely
+:status: draft
+:chapter-id: I04
+:builds-on: F19, H13
+
+== The core rule: delegation, not impersonation
+
+The naive version _replaces_ the identity -- the session becomes the customer, and nothing
+records that an admin is really acting. This is *impersonation* in the
+<<F19,F19>> sense, and it destroys accountability.
+
+The safe version is *delegation* (<<F19,F19>>): the admin acts
+_for_ the user, and *both identities are recorded on every action*:
+
+----
+   ❌ IMPERSONATION:  session.user = customer          → "customer did it"
+   ✅ DELEGATION:     session = {                       → "agent did it AS customer"
+                        acting_as: customer,
+                        real_actor: support_agent,      ← never lost
+                      }
+----
+
+Every action carries both, exactly the `sub` / `act` distinction from
+<<F19,F19>>: `sub` is who it's _for_ (the customer), `act` is who's
+_doing_ it (the agent). The audit log (<<H13,H13>>) records both, so
+"the customer did it" is never a lie the system tells.
+
+'''
+
+== Safe impersonation
+
+[,python]
+----
+def start_impersonation(admin: User, target_user_id: str, reason: str):
+    # 1. Authorize it — not every admin, and step up. D18.
+    if not admin.can("support:impersonate"):
+        raise Forbidden()
+    require_recent_authentication(admin, max_age=60, min_acr="aal2")   # D18
+
+    # 2. Require a REASON. No impersonation without a stated purpose.
+    if not reason or len(reason) < 10:
+        raise ValueError("a reason is required")
+
+    # 3. Create a DELEGATION session — both identities, time-boxed.
+    session = create_session(
+        acting_as=target_user_id,           # sub — who it's FOR
+        real_actor=admin.id,                # act — who's DOING it   F19
+        is_impersonation=True,
+        reason=reason,
+        expires_at=now() + timedelta(minutes=30),   # short-lived
+        read_only=default_read_only(admin),         # see below
+    )
+
+    # 4. Loud audit + notify the user. H13.
+    audit_log("impersonation.start", actor=admin.id, target=target_user_id, reason=reason)
+    notify_user(target_user_id,
+                f"A support agent accessed your account to help with: {reason}")   # ★
+    return session
+
+def authorize_action(session, action, resource):
+    # The real actor's identity is ALWAYS available and ALWAYS logged.
+    allowed = authz.can(session.acting_as, action, resource)      # customer's permissions
+    if session.is_impersonation:
+        # Impersonation can't EXCEED the user's own access, and often less.
+        if session.read_only and is_write(action):
+            allowed = False                          # read-only impersonation
+        audit_log("impersonated_action", real_actor=session.real_actor,
+                  acting_as=session.acting_as, action=action, resource=resource)  # H13
+    return allowed
+----
+
+Six controls, each closing a specific abuse:
+
+|===
+| Control | Prevents
+
+| *Authorized + step-up* (<<D18,D18>>)
+| Any staff member impersonating anyone
+
+| *Mandatory reason*
+| Casual, curiosity-driven access
+
+| *Delegation, not replacement* (<<F19,F19>>)
+| The unauditable-backdoor failure
+
+| *Time-boxed* (30 min)
+| A standing impersonation session left open
+
+| *Read-only by default*
+| Support changing customer data
+
+| *Notify the user* (★)
+| Silent access -- the customer _knows_
+|===
+
+'''
+
+== Read-only by default
+
+Most support tasks are _diagnostic_ -- "what does the user see?" -- and need only read access.
+Making impersonation *read-only by default* means an agent can reproduce a display bug without
+the ability to change anything, which removes the highest-risk actions from the common case.
+
+Write access during impersonation should be a *separate, higher-friction escalation* --
+additional authorization, a stronger reason, perhaps a second approver
+(<<D09,D09>>'s two-person model) -- and _never_ for the most
+sensitive actions:
+
+[,python]
+----
+# Even with write impersonation, block the actions that redefine access.
+NEVER_IMPERSONATE = {"password.change", "email.change", "mfa.remove",
+                     "payment.change", "account.delete", "impersonate"}
+----
+
+An agent must not be able to, _as the customer_, change the customer's password, remove their
+MFA, or start impersonating _someone else_. These are the actions that would let impersonation
+become account takeover (<<D18,D18>>).
+
+'''
+
+== Make it obvious, everywhere
+
+Two audiences must always know impersonation is active:
+
+*The agent* -- an unmissable banner, so they never forget they're acting as someone else and
+never mistake the customer's data for a test account:
+
+----
+   ┌──────────────────────────────────────────────────────────────┐
+   │ ⚠️ You are viewing as ALICE SMITH (alice@acme.com) · read-only │
+   │    Reason: "reproduce export bug #4821"    [ Exit impersonation ]│
+   └──────────────────────────────────────────────────────────────┘
+----
+
+*The customer* -- the notification (★ above), and a visible entry in _their_ account activity
+(<<E13,E13>>): "A support agent accessed your account on
+[date] for [reason]." Transparency is both a trust feature and a control -- a customer who can
+see impersonation happening is a check on its misuse. Some regulated products _require_ this
+consent/visibility.
+
+'''
+
+== Rotate the session on entry and exit
+
+Impersonation is a privilege change (<<E04,E04>>) -- treat it like one:
+
+* *Regenerate the session ID* when impersonation starts _and_ when it ends
+(<<D06,D06>>, <<E04,E04>>).
+This prevents a fixation-style confusion between the admin's real session and the
+impersonation session, and ensures exiting cleanly restores the admin's own identity.
+* *On exit, return to the admin's identity* -- not a logged-out state, and never a lingering
+"acting as" flag. Audit the exit too.
+
+[,python]
+----
+def stop_impersonation(session):
+    audit_log("impersonation.end", real_actor=session.real_actor,
+              acting_as=session.acting_as, duration=session.age())   # H13
+    return rotate_to_admin_session(session.real_actor)     # back to the admin, new session id
+----
+
+'''
+
+== The alternatives to impersonation
+
+Impersonation is powerful and risky; sometimes a lower-risk tool fits the actual need:
+
+* *A read-only "view as user" that renders the customer's UI from admin context* -- shows what
+the user sees without an impersonation session at all. Good for diagnostic tasks.
+* *Customer-initiated support access* -- the customer clicks "grant support access for 24
+hours," so access is _consented_ and time-boxed. Strongest model where the customer is
+available (Stripe, GitHub, and others use this).
+* *Better diagnostics* -- detailed, privacy-preserving logs and error reports
+(<<I08,I08>>) that let support reproduce issues without account access.
+
+Reach for full impersonation only when reproducing the user's exact authenticated state is
+genuinely required -- and even then, read-only, delegated, and consented where possible.
+
+'''
+
+== Terms defined in this chapter
+
+`impersonation (admin)`, `break-glass`
+
+'''
+
+== What to remember
+
+. *Naive "login as user" is an unauditable backdoor.* The safe version is entirely in _how_
+it's built.
+. *Delegation, not impersonation:* record _both_ the real actor and the acted-as user on
+every action (<<F19,F19>>, <<H13,H13>>).
+"The customer did it" must never be a lie.
+. *Authorize it, step up, require a reason, time-box it* -- impersonation is a privileged
+action, not a convenience.
+. *Read-only by default;* write is a separate escalation, and credential-changing actions are
+*never* impersonable.
+. *Notify the customer and show the agent a banner* -- transparency is a control.
+. *Rotate the session on entry and exit*, and return cleanly to the admin's identity.
+. *Prefer lower-risk alternatives* -- "view as," customer-consented access, better diagnostics
+-- when they meet the need.
+
+'''
+
+== Sources
+
+* https://www.rfc-editor.org/rfc/rfc8693[RFC 8693 -- OAuth 2.0 Token Exchange] §1.1 (delegation vs impersonation)
+* https://cheatsheetseries.owasp.org/cheatsheets/Access_Control_Cheat_Sheet.html[OWASP Access Control Cheat Sheet]
+* https://docs.stripe.com/[Stripe / GitHub: customer-consented support access patterns]
+
+'''

@@ -1,0 +1,257 @@
+= Auth: From Zero to Pro
+Gowtham Padala
+:doctype: book
+:toclevels: 2
+:sectnums!:
+:chapter-signifier: Chapter
+:appendix-caption: Appendix
+:xrefstyle: short
+:idprefix:
+:idseparator: -
+ifdef::web[:toc: left]
+ifdef::book[:toc:]
+:description: A handbook on authentication and authorization, built from zero.
+:diagramsdir: {docdir}/../diagrams
+
+include::preface.adoc[leveloffset=+1]
+
+[[part-a]]
+= Part A: How the web actually works
+
+[partintro]
+--
+The prerequisites every auth tutorial assumes and never teaches. What a request is, why the server forgets you, what a cookie is, and which of your code an attacker can read.
+--
+
+include::track-a/A01-what-happens-when-you-type-a-url.adoc[leveloffset=+1]
+include::track-a/A02-reading-http-in-dev-tools.adoc[leveloffset=+1]
+include::track-a/A03-methods-status-codes-401-vs-403.adoc[leveloffset=+1]
+include::track-a/A04-headers.adoc[leveloffset=+1]
+include::track-a/A05-stateless.adoc[leveloffset=+1]
+include::track-a/A06-cookies.adoc[leveloffset=+1]
+include::track-a/A07-client-vs-server.adoc[leveloffset=+1]
+include::track-a/A08-what-an-api-is.adoc[leveloffset=+1]
+include::track-a/A09-redirects.adoc[leveloffset=+1]
+include::track-a/A10-where-secrets-live.adoc[leveloffset=+1]
+include::track-a/A11-same-origin-and-cors.adoc[leveloffset=+1]
+
+[[part-b]]
+= Part B: Crypto foundations
+
+[partintro]
+--
+From bits to certificates, in strict dependency order. Nothing here is auth. All of it is what auth is made of.
+--
+
+include::track-b/B01-bits-bytes-text-as-numbers.adoc[leveloffset=+1]
+include::track-b/B02-encoding-is-not-encryption.adoc[leveloffset=+1]
+include::track-b/B03-randomness.adoc[leveloffset=+1]
+include::track-b/B04-what-a-hash-function-is.adoc[leveloffset=+1]
+include::track-b/B05-hashing-vs-encryption.adoc[leveloffset=+1]
+include::track-b/B06-collisions.adoc[leveloffset=+1]
+include::track-b/B07-fast-hashes-wrong-for-passwords.adoc[leveloffset=+1]
+include::track-b/B08-salts-peppers-slow-hashes.adoc[leveloffset=+1]
+include::track-b/B09-symmetric-encryption.adoc[leveloffset=+1]
+include::track-b/B10-key-distribution-problem.adoc[leveloffset=+1]
+include::track-b/B11-asymmetric-encryption.adoc[leveloffset=+1]
+include::track-b/B12-key-exchange.adoc[leveloffset=+1]
+include::track-b/B13-message-authentication-hmac.adoc[leveloffset=+1]
+include::track-b/B14-digital-signatures.adoc[leveloffset=+1]
+include::track-b/B15-certificates-and-pki.adoc[leveloffset=+1]
+include::track-b/B16-timing-attacks.adoc[leveloffset=+1]
+include::track-b/B17-what-https-protects.adoc[leveloffset=+1]
+
+[[part-c]]
+= Part C: The map
+
+[partintro]
+--
+Where the word auth stops being one word and becomes five separable problems.
+--
+
+include::track-c/C01-auth-is-five-different-problems.adoc[leveloffset=+1]
+include::track-c/C02-authn-vs-authz-vs-session.adoc[leveloffset=+1]
+include::track-c/C03-the-vocabulary.adoc[leveloffset=+1]
+include::track-c/C04-threat-modeling.adoc[leveloffset=+1]
+include::track-c/C05-build-vs-buy.adoc[leveloffset=+1]
+
+[[part-d]]
+= Part D: Authentication
+
+[partintro]
+--
+Proving who someone is. Passwords, second factors, passkeys, and the recovery paths that attackers prefer.
+--
+
+include::track-d/D01-identifiers.adoc[leveloffset=+1]
+include::track-d/D02-email-as-identity.adoc[leveloffset=+1]
+include::track-d/D03-how-to-store-passwords.adoc[leveloffset=+1]
+include::track-d/D04-password-policies.adoc[leveloffset=+1]
+include::track-d/D05-build-login-part-1-registration.adoc[leveloffset=+1]
+include::track-d/D06-build-login-part-2-login.adoc[leveloffset=+1]
+include::track-d/D07-user-enumeration.adoc[leveloffset=+1]
+include::track-d/D08-rate-limiting-and-stuffing.adoc[leveloffset=+1]
+include::track-d/D09-account-recovery.adoc[leveloffset=+1]
+include::track-d/D10-magic-links-and-email-otp.adoc[leveloffset=+1]
+include::track-d/D11-sms-second-factor.adoc[leveloffset=+1]
+include::track-d/D12-build-totp.adoc[leveloffset=+1]
+include::track-d/D13-recovery-codes.adoc[leveloffset=+1]
+include::track-d/D14-webauthn-and-passkeys-concepts.adoc[leveloffset=+1]
+include::track-d/D15-build-passkeys.adoc[leveloffset=+1]
+include::track-d/D16-biometrics.adoc[leveloffset=+1]
+include::track-d/D17-remember-this-device.adoc[leveloffset=+1]
+include::track-d/D18-step-up-auth-and-aal.adoc[leveloffset=+1]
+
+[[part-e]]
+= Part E: Sessions and tokens
+
+[partintro]
+--
+Keeping someone logged in, and the family of ways that goes wrong.
+--
+
+include::track-e/E01-why-http-needs-sessions.adoc[leveloffset=+1]
+include::track-e/E02-cookie-attributes.adoc[leveloffset=+1]
+include::track-e/E03-build-server-side-sessions.adoc[leveloffset=+1]
+include::track-e/E04-session-ids.adoc[leveloffset=+1]
+include::track-e/E05-what-a-jwt-actually-is.adoc[leveloffset=+1]
+include::track-e/E06-jwt-part-2-signature-jws-jwe.adoc[leveloffset=+1]
+include::track-e/E07-jose-family.adoc[leveloffset=+1]
+include::track-e/E08-signed-cookies-vs-jwt-vs-opaque.adoc[leveloffset=+1]
+include::track-e/E09-should-you-use-jwts-for-sessions.adoc[leveloffset=+1]
+include::track-e/E10-token-lifetimes-and-rotation.adoc[leveloffset=+1]
+include::track-e/E11-revocation.adoc[leveloffset=+1]
+include::track-e/E12-where-to-store-a-token.adoc[leveloffset=+1]
+include::track-e/E13-sessions-across-devices.adoc[leveloffset=+1]
+include::track-e/E14-why-logout-is-hard.adoc[leveloffset=+1]
+include::track-e/E15-csrf.adoc[leveloffset=+1]
+include::track-e/E16-xss-is-an-auth-vulnerability.adoc[leveloffset=+1]
+
+[[part-f]]
+= Part F: Delegated authorization with OAuth 2
+
+[partintro]
+--
+Letting one application call another on a user's behalf without handing over the user's password.
+--
+
+include::track-f/F01-the-problem-oauth-solves.adoc[leveloffset=+1]
+include::track-f/F02-four-roles-two-channels.adoc[leveloffset=+1]
+include::track-f/F03-authorization-code-flow.adoc[leveloffset=+1]
+include::track-f/F04-build-oauth-client-raw-http.adoc[leveloffset=+1]
+include::track-f/F05-the-state-parameter.adoc[leveloffset=+1]
+include::track-f/F06-pkce.adoc[leveloffset=+1]
+include::track-f/F07-access-refresh-scopes.adoc[leveloffset=+1]
+include::track-f/F08-audience-and-resource-indicators.adoc[leveloffset=+1]
+include::track-f/F09-public-vs-confidential-clients.adoc[leveloffset=+1]
+include::track-f/F10-client-credentials.adoc[leveloffset=+1]
+include::track-f/F11-device-flow.adoc[leveloffset=+1]
+include::track-f/F12-introspection-vs-local-validation.adoc[leveloffset=+1]
+include::track-f/F13-consent-screens.adoc[leveloffset=+1]
+include::track-f/F14-build-an-authorization-server.adoc[leveloffset=+1]
+include::track-f/F15-implicit-and-password-grants.adoc[leveloffset=+1]
+include::track-f/F16-sender-constrained-tokens.adoc[leveloffset=+1]
+include::track-f/F17-oauth-for-spas-and-bff.adoc[leveloffset=+1]
+include::track-f/F18-oauth-for-mobile.adoc[leveloffset=+1]
+include::track-f/F19-token-exchange.adoc[leveloffset=+1]
+include::track-f/F20-attack-your-own-oauth.adoc[leveloffset=+1]
+
+[[part-g]]
+= Part G: Federated identity and single sign-on
+
+[partintro]
+--
+Sign in with somebody else. The consumer version, the enterprise version, and the seams between them.
+--
+
+include::track-g/G01-sign-in-with-google.adoc[leveloffset=+1]
+include::track-g/G02-oidc-on-top-of-oauth.adoc[leveloffset=+1]
+include::track-g/G03-id-token-vs-access-token.adoc[leveloffset=+1]
+include::track-g/G04-validate-an-id-token-by-hand.adoc[leveloffset=+1]
+include::track-g/G05-discovery-and-well-known.adoc[leveloffset=+1]
+include::track-g/G06-claims-vs-scopes-userinfo.adoc[leveloffset=+1]
+include::track-g/G07-saml-survival-guide.adoc[leveloffset=+1]
+include::track-g/G08-saml-vs-oidc.adoc[leveloffset=+1]
+include::track-g/G09-multi-tenant-sso.adoc[leveloffset=+1]
+include::track-g/G10-home-realm-discovery.adoc[leveloffset=+1]
+include::track-g/G11-federated-sessions-single-logout.adoc[leveloffset=+1]
+include::track-g/G12-account-linking.adoc[leveloffset=+1]
+include::track-g/G13-enterprise-directories.adoc[leveloffset=+1]
+include::track-g/G14-attack-your-own-sso.adoc[leveloffset=+1]
+
+[[part-h]]
+= Part H: Authorization
+
+[partintro]
+--
+What someone can do once they are in. The layer that gets the least attention and produces the most serious bugs.
+--
+
+include::track-h/H01-where-does-authz-live.adoc[leveloffset=+1]
+include::track-h/H02-the-enforcement-point.adoc[leveloffset=+1]
+include::track-h/H03-acls-and-direct-permissions.adoc[leveloffset=+1]
+include::track-h/H04-rbac-and-when-it-breaks.adoc[leveloffset=+1]
+include::track-h/H05-roles-permissions-scopes-groups.adoc[leveloffset=+1]
+include::track-h/H06-abac.adoc[leveloffset=+1]
+include::track-h/H07-rebac-and-zanzibar.adoc[leveloffset=+1]
+include::track-h/H08-model-drive-in-openfga.adoc[leveloffset=+1]
+include::track-h/H09-multi-tenancy-isolation.adoc[leveloffset=+1]
+include::track-h/H10-row-level-security.adoc[leveloffset=+1]
+include::track-h/H11-opa-cedar-or-sql.adoc[leveloffset=+1]
+include::track-h/H12-authz-in-microservices.adoc[leveloffset=+1]
+include::track-h/H13-audit-logging.adoc[leveloffset=+1]
+include::track-h/H14-attack-your-own-authorization.adoc[leveloffset=+1]
+
+[[part-i]]
+= Part I: Identity lifecycle and operations
+
+[partintro]
+--
+The half of auth that only shows up in production: provisioning, rotation, logging, incidents, migration.
+--
+
+include::track-i/I01-identity-lifecycle.adoc[leveloffset=+1]
+include::track-i/I02-provisioning-and-scim.adoc[leveloffset=+1]
+include::track-i/I03-deprovisioning.adoc[leveloffset=+1]
+include::track-i/I04-admin-impersonation.adoc[leveloffset=+1]
+include::track-i/I05-secrets-management.adoc[leveloffset=+1]
+include::track-i/I06-key-rotation.adoc[leveloffset=+1]
+include::track-i/I07-testing-auth.adoc[leveloffset=+1]
+include::track-i/I08-observability.adoc[leveloffset=+1]
+include::track-i/I09-detecting-account-takeover.adoc[leveloffset=+1]
+include::track-i/I10-incident-response.adoc[leveloffset=+1]
+include::track-i/I11-compliance.adoc[leveloffset=+1]
+include::track-i/I12-migrating-auth.adoc[leveloffset=+1]
+
+[[part-j]]
+= Part J: Machine, workload and agent identity
+
+[partintro]
+--
+Auth when there is no human at all.
+--
+
+include::track-j/J01-machine-identity-is-not-user-identity.adoc[leveloffset=+1]
+include::track-j/J02-api-keys.adoc[leveloffset=+1]
+include::track-j/J03-service-accounts.adoc[leveloffset=+1]
+include::track-j/J04-mtls.adoc[leveloffset=+1]
+include::track-j/J05-workload-identity-spiffe.adoc[leveloffset=+1]
+include::track-j/J06-signing-webhooks.adoc[leveloffset=+1]
+include::track-j/J07-auth-for-ai-agents.adoc[leveloffset=+1]
+include::track-j/J08-mcp-and-oauth-21.adoc[leveloffset=+1]
+
+[[part-k]]
+= Part K: Capstone
+
+[partintro]
+--
+Assemble everything into one application, then break it.
+--
+
+include::track-k/K01-architecture-review.adoc[leveloffset=+1]
+include::track-k/K02-capstone-part-1.adoc[leveloffset=+1]
+include::track-k/K03-capstone-part-2.adoc[leveloffset=+1]
+include::track-k/K05-the-decision-tree.adoc[leveloffset=+1]
+include::track-k/K06-where-to-go-next.adoc[leveloffset=+1]
+
+include::appendix-recommendations.adoc[leveloffset=+1]
