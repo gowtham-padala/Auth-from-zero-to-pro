@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant B as Browser
+    participant S as Server
+    B->>S: POST /login (alice, password)
+    S->>S: check password, build claims
+    S->>S: tag = HMAC(key, header.payload)
+    S-->>B: header.payload.tag
+    Note over B: Anyone can read header and payload.<br/>Nobody without the key can produce a matching tag.
+    B->>S: GET /docs/17 with header.payload.tag
+    S->>S: recompute HMAC(key, header.payload)
+    S->>S: constant-time compare with tag
+    S-->>B: 200 if equal, 401 if not

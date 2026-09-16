@@ -1,0 +1,370 @@
+[[E05]]
+= E05. What a JWT actually is
+:status: final
+:chapter-id: E05
+:builds-on: A05, A06, B02, B13, B14, B16, C03, E01
+ifndef::diagramsdir[:diagramsdir: ../../diagrams]
+
+== The server that cannot remember you
+
+Alice logs in to the document-sharing service. The server checks her password against the
+stored hash, as built in Chapter <<D06,D06>>, and answers with the home page. Two seconds
+later her browser asks for `/docs/17`. The server has no idea who is asking.
+
+That is not a bug. It is the property of HTTP that Chapter <<A05,A05>> spent a whole
+chapter on. Every request arrives alone. Whatever the server learned on the last request
+is gone unless something carries it forward, and the only thing that reliably travels
+from one request to the next is a cookie, as described in Chapter <<A06,A06>>.
+
+The obvious move is to put the answer in the cookie. After a successful login the server
+sets one:
+
+----
+Set-Cookie: user=4471
+----
+
+The browser sends it back on every request, the server reads `4471`, and Alice sees her
+documents. Forty lines of code, and it works.
+
+It works for Alice. It also works for anyone who opens the browser's storage panel,
+changes `4471` to `1`, and reloads. User 1 is the founder's account. The server reads the
+number, believes it, and serves the founder's documents. There is no exploit here in any
+meaningful sense. The server asked the client a question and trusted the answer.
+
+Chapter <<E01,E01>> introduced the session as a way out of this. The server hands the
+browser a long random identifier that means nothing on its own, and keeps the real answer
+in its own database. Chapter <<E03,E03>> builds exactly that, and for most applications
+it is the right design. This chapter is about the other way out, which is worth
+understanding on its own terms because half the tokens you will meet in the rest of this
+book are built this way.
+
+The other way out is to keep sending the answer to the client, and make it impossible to
+change.
+
+== Building a token the client cannot forge
+
+Start with what the server wants to remember. More than a number. Who this is, what they
+may do, when they logged in, and when this should stop being valid. That is a small
+set of claims about a subject, in the vocabulary of Chapter <<C03,C03>>, and the natural
+way to write a small set of named values is JSON:
+
+----
+{"sub":"4471","access":"editor"}
+----
+
+=== Step one: make it fit in a header
+
+A cookie value cannot contain arbitrary bytes, and neither can an HTTP header. Quotation
+marks, braces and spaces all need care. Chapter <<B02,B02>> gave the standard answer for
+carrying bytes through a text channel: base64 encode them. Encoded, the JSON above
+becomes
+
+----
+eyJzdWIiOiI0NDcxIiwiYWNjZXNzIjoiZWRpdG9yIn0=
+----
+
+and it will survive any header, any URL and any log file.
+
+Chapter <<B02,B02>> also made a point that bears repeating here, because this is the
+place where people forget it. Base64 is not encryption. It is a different spelling of the
+same bytes. Anyone holding that string can turn it back into the JSON with any decoder,
+no key required. Worse, anyone can write their own JSON and encode it:
+
+----
+eyJzdWIiOiI0NDcxIiwiYWNjZXNzIjoiYWRtaW4ifQ==
+----
+
+decodes to `{"sub":"4471","access":"admin"}`. The encoding changed nothing about the
+problem. The client still gets to write the answer.
+
+=== Step two: make tampering detectable
+
+What the server needs is a way to tell, on the next request, that the value it receives
+is the value it sent. Chapter <<B13,B13>> built exactly this primitive. A message
+authentication code is a short tag, computed from a message and a secret key, that only a
+holder of the key can produce. Change one bit of the message and the tag no longer
+matches. The specific construction that is safe to use is HMAC, and the reason the naive
+construction is not safe was the length extension attack shown in that chapter.
+
+So the server keeps a key that never leaves it, computes a tag over the encoded claims,
+and sends both:
+
+----
+eyJzdWIiOiI0NDcxIiwiYWNjZXNzIjoiZWRpdG9yIn0=.<tag>
+----
+
+The dot is just a separator that cannot appear in base64 output. When the value comes
+back, the server recomputes the tag over the first part and compares it to the second, in
+constant time, for the reason Chapter <<B16,B16>> gave. If they match, the claims are the
+ones the server wrote. If the client edited `editor` to `admin`, the tag the server
+recomputes will not match the one attached, and the request is refused.
+
+The client can still read the claims. It can no longer change them. Those two properties
+together are the whole idea. Readable, and tamper-evident.
+
+=== Step three: say how it was made
+
+One more thing has to travel with the token. The server that verifies it needs to know
+which algorithm produced the tag, and in a larger system, which of several keys. Both
+can be written as a second small JSON object, encoded the same way, and put in front:
+
+----
+{"alg":"HS256","typ":"JWT"}
+----
+
+`HS256` names HMAC using SHA-256. `typ` says what kind of object this is. Encode it, and
+the three parts joined by dots are the finished token:
+
+----
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
+.
+eyJzdWIiOiI0NDcxIiwibmFtZSI6IkFsaWNlIiwiYWNjZXNzIjoiZWRpdG9yIiwiaWF0IjoxNzU4MDAwMDAwLCJleHAiOjE3NTgwMDA5MDB9
+.
+0oas5my_7hxww0HxCBfWT8ZtogTt9QzFtjXt6kLqZ_I
+----
+
+You have just derived the format that RFC 7519 calls a JSON Web Token, or JWT. The first
+part is the header, the second is the payload, and the third is the signature. The
+dotted, base64url-encoded form is called the compact serialization. The container that
+carries a signed payload with a header describing the signature is a JSON Web Signature,
+or JWS, and a JWT is a JWS whose payload is a set of claims.
+
+Three details of the format follow from the derivation and are the source of most
+first-week bugs.
+
+The encoding is base64url, the URL-safe alphabet from Chapter <<B02,B02>>, with the
+padding characters removed. RFC 7515 section 2 defines it that way so a token can sit in
+a URL or a header without escaping. A decoder that expects padding will fail on roughly
+two thirds of tokens, the ones whose length is not a multiple of four, and it will fail
+for some users and not others depending on the length of their name.
+
+The tag is computed over the encoded header and encoded payload joined by a dot, exactly
+as they appear in the token, per RFC 7515 section 5.1. Not over the decoded JSON. If a
+verifier parses the payload, re-serialises it and computes the tag over that, whitespace
+and key order will differ and the tag will not match. Verify over the bytes you received.
+
+The times are seconds since the Unix epoch, not milliseconds. A timestamp produced by a
+language whose clock reports milliseconds will, if used as an expiry, produce a token
+that is valid for the next fifty-five thousand years.
+
+=== Watching it fail
+
+The token above carries these claims:
+
+----
+{"sub":"4471","name":"Alice","access":"editor","iat":1758000000,"exp":1758000900}
+----
+
+Alice's browser holds it and sends it with each request. Suppose she edits the payload so
+that `editor` reads `admin`, re-encodes it, and leaves the header and signature as they
+were:
+
+----
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
+.
+eyJzdWIiOiI0NDcxIiwibmFtZSI6IkFsaWNlIiwiYWNjZXNzIjoiYWRtaW4iLCJpYXQiOjE3NTgwMDAwMDAsImV4cCI6MTc1ODAwMDkwMH0
+.
+0oas5my_7hxww0HxCBfWT8ZtogTt9QzFtjXt6kLqZ_I
+----
+
+The server recomputes the tag over the new header and payload with its key and gets
+
+----
+gmjGJB-kbBILmAGlLT7AgIiUVBfo1KRHo7Ia5_qSa-Q
+----
+
+which is not the tag attached. The request is refused before the payload is ever used.
+Alice would need the server's key to produce a matching tag, and the key never left the
+server.
+
+.How a signed token is issued and checked
+mermaid::{diagramsdir}/jwt-sign-verify.mmd[format=svg]
+
+The runnable version of this exchange, including the tamper attempt, lives in the
+application's test suite and is included here once the application exists.
+
+=== The claims everybody uses
+
+Any JSON is allowed in the payload, but a handful of claim names are registered in RFC
+7519 section 4.1, and each exists because the naive design above is missing something.
+
+`exp` (4.1.4) is the expiry, because a tag proves the claims are unchanged, not that they
+are still true. Without an expiry, a token is valid forever, and the fact that Alice left
+the company last year is not something the tag can know. `iat` (4.1.6) records when it
+was issued. `nbf` (4.1.5) says when it starts being valid. `sub` (4.1.2) names the
+subject, `iss` (4.1.1) names who issued it, and `jti` (4.1.7) gives it a unique
+identifier.
+
+`aud` (4.1.3), the audience, exists because of a failure that is worth pausing on. The
+document service and a billing service share one HMAC key so that a token from either can
+be checked by the other. A token issued so Alice can read documents is captured and sent
+to the billing service, which verifies the tag, finds it correct, and lets Alice issue
+refunds. Nothing was forged. The token was genuine and it was presented to a service it
+was never meant for. The audience claim names who a token is for, and a verifier that
+does not check it will accept genuine tokens meant for someone else. This is the shape
+of the attack known as the confused deputy, in which a component with authority is
+tricked into using it on an attacker's behalf, and Chapter <<F08,F08>> returns to it in
+the setting where it does the most damage.
+
+Two properties of the payload follow from the derivation and are easy to forget. First,
+it is public. Nothing in a JWT is hidden from the person holding it, so it must contain
+nothing the user should not see and nothing a proxy should not log. An encrypted variant
+of the container exists and Chapter <<E06,E06>> covers it, along with the reasons it is
+rarely the right answer. Second, it is stale. The claims were true at issue time. If
+Alice is demoted a minute later, her token says `editor` until it expires, because
+nothing in the design consults the server. Chapter <<E11,E11>> is about what that costs.
+
+=== A tag is not quite a signature
+
+The third part of the token is called the signature, and with `HS256` that name is a
+small lie. HMAC is a MAC, in the sense Chapter <<B13,B13>> defined. Everyone who can
+verify the tag holds the key, so everyone who can verify can also mint. The document
+service and the billing service in the example above can each forge tokens for the
+other. In a system where one service issues tokens and several verify them, a shared
+HMAC key makes the least important verifier as dangerous as the issuer.
+
+Chapter <<B14,B14>> gave the primitive that fixes this. A digital signature is produced
+with a private key and checked with a public key, so verifiers hold something that cannot
+forge. RFC 7518 section 3.1 lists the algorithms a JWS may name in `alg`, and they fall
+into the two families: `HS256` and its relatives are HMACs, and `RS256`, `PS256`,
+`ES256` and `EdDSA` are signatures. The token format is identical. Only the third part
+changes, and with it, who is able to produce one.
+
+== Getting it wrong
+
+The token tells the verifier which algorithm to use. The token came from the client.
+Nearly every serious JWT vulnerability follows from a verifier that forgot the second
+sentence.
+
+=== The unsigned token
+
+RFC 7518 section 3.6 registers an `alg` value of `none`, meaning an unsecured JWS whose
+signature part is empty. It exists for cases where integrity is guaranteed by some outer
+layer. In a verifier that reads `alg` from the token and does what it says, it is a total
+bypass. The attacker writes a header of `{"alg":"none","typ":"JWT"}`, writes any payload
+they like, attaches nothing, and the verifier, told there is nothing to verify, verifies
+nothing:
+
+----
+eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0
+.
+eyJzdWIiOiI0NDcxIiwibmFtZSI6IkFsaWNlIiwiYWNjZXNzIjoiYWRtaW4iLCJpYXQiOjE3NTgwMDAwMDAsImV4cCI6MTc1ODAwMDkwMH0
+.
+----
+
+This is a two-line forgery, and multiple widely used libraries shipped verifiers that
+accepted it. The disclosure that made it famous is McLean's 2015 write-up, listed in the
+references.
+
+=== Algorithm confusion
+
+Subtler, and it defeats verifiers that correctly reject `none`. A service signs its
+tokens with `RS256` and, as it should, publishes the RSA public key so that others can
+verify. An attacker takes that public key, writes a token whose header says `HS256`, and
+computes an HMAC tag over it using the bytes of the public key as the HMAC secret. The
+verifier reads `HS256`, fetches the configured key, which is the RSA public key, hands it
+to the HMAC routine as the secret, and the tag matches. The attacker signed a token with
+a value the service deliberately published.
+
+The bug is the same in both attacks. The verifier let the token decide how it would be
+checked. RFC 8725 section 3.1 states the rule as a best current practice: the verifier
+must know which algorithms it accepts and reject any token naming a different one, and
+section 3.2 addresses `none` specifically. Section 3.9 covers the audience check from
+above, and section 3.11 recommends using the `typ` header so that a token of one kind
+cannot be presented as another.
+
+== Getting it right
+
+// tag::rec-jwt-verification[]
+.Recommendation, dated 2026-09-16
+[NOTE.recommendation]
+====
+Pin the accepted algorithms in the verifier's configuration and reject any token whose
+`alg` is not on that list. Never accept `none`. Every maintained library takes an
+explicit allow-list; a library that does not require one is telling you its age.
+
+Use `HS256` only when one party both issues and verifies. As soon as a second service
+verifies tokens it did not issue, switch to a signature algorithm so that verifiers hold
+only a public key. Among the signature algorithms, `ES256` and `EdDSA` produce 64-byte
+signatures against 256 bytes for `RS256` with a 2048-bit key, which matters when the
+token rides on every request. `RS256` remains the most widely supported.
+
+Require and check `exp`, and check `iss` and `aud` against configured values, allowing a
+small tolerance for clock skew between machines, typically 30 to 60 seconds and no more.
+Check `typ` where the token type matters. Reject a token missing any claim you rely on
+rather than treating its absence as acceptable.
+
+Keep the payload small enough that the whole token stays under about 1 KB. Servers and
+proxies commonly cap total header size at 8 KB, and a token stuffed with claims
+fails first for the most privileged users, which is the worst place for a bug to hide.
+
+Sources: RFC 8725 sections 3.1, 3.2, 3.9 and 3.11; RFC 7518 section 3.1 for the
+algorithm registry; RFC 6585 section 5 for the 431 status a server returns when headers
+are too large.
+====
+// end::rec-jwt-verification[]
+
+== Tradeoffs, and when not to
+
+The advantage of a JWT, stated precisely, is that verification needs no lookup. Any party
+holding the verification key can check a token without asking the issuer. That is
+valuable when many services must verify, when the verifier cannot reach the issuer, or
+when the verifier is in a different organisation altogether, which is why the tokens in
+Parts F and G are built this way.
+
+The cost is exactly the same fact seen from the other side. Because verification needs
+no lookup, nothing consults the server, so nothing can stop a token early. A stolen token
+is good until it expires. A demoted user keeps their old access until it expires. Shorter
+expiries limit the damage and increase how often the client must obtain a new token,
+which is the trade Chapter <<E10,E10>> is about, and Chapter <<E11,E11>> is about the
+partial fixes and what each one gives back.
+
+There is also a size cost. A session identifier is around forty bytes. A modest JWT is
+several hundred, and it travels on every request.
+
+For an application with one server and one database, none of the advantage applies. The
+database is already in the request path, a lookup costs well under a millisecond, and it
+buys immediate logout and a fresh answer about what the user may do. That application should use the server-side
+session from Chapter <<E03,E03>>. Chapter <<E08,E08>> lays the options side by side and
+Chapter <<E09,E09>> takes a position. The short version is that a JWT is for crossing a
+trust boundary, and most requests inside one application do not cross one.
+
+== Summary
+
+A server cannot remember who is asking, so the answer has to travel with each request.
+Putting the answer in a cookie hands the client control of it. Encoding the answer
+changes its spelling and nothing else. Attaching an HMAC tag, from Chapter <<B13,B13>>,
+lets the server detect any change, and a small header describing how the tag was made
+completes the format. Three base64url segments joined by dots, the third being an HMAC or
+a digital signature over the first two, is a JSON Web Token.
+
+The two properties that matter are that anyone can read it and nobody without the key can
+change it. The registered claims exist to fill the gaps the tag leaves: expiry because a
+tag cannot know that a fact went stale, audience because a genuine token can be presented
+to the wrong service. The attacks that matter follow from letting the token choose how
+it is verified, and the defence is to decide that in configuration and never in the
+token. The token's advantage is verification without a lookup, and its costs are the same
+fact: nothing can stop it early, and its claims are only as fresh as its issue time.
+
+== References
+
+* RFC 7519, JSON Web Token (JWT). Section 4.1 registered claim names; 4.1.1 `iss`,
+  4.1.2 `sub`, 4.1.3 `aud`, 4.1.4 `exp`, 4.1.5 `nbf`, 4.1.6 `iat`, 4.1.7 `jti`.
+  https://www.rfc-editor.org/rfc/rfc7519
+* RFC 7515, JSON Web Signature (JWS). Section 2, definition of base64url encoding without
+  padding; section 5.1, computing the signing input over the encoded header and payload;
+  section 5.2, validation. https://www.rfc-editor.org/rfc/rfc7515
+* RFC 7518, JSON Web Algorithms. Section 3.1, the `alg` values for JWS; section 3.6,
+  the `none` algorithm. https://www.rfc-editor.org/rfc/rfc7518
+* RFC 8725, JSON Web Token Best Current Practices. Section 3.1, perform algorithm
+  verification; 3.2, use appropriate algorithms; 3.9, use and validate audience; 3.11,
+  use explicit typing. https://www.rfc-editor.org/rfc/rfc8725
+* RFC 4648, The Base16, Base32, and Base64 Data Encodings. Section 5, the URL and
+  filename safe alphabet. https://www.rfc-editor.org/rfc/rfc4648
+* RFC 2104, HMAC: Keyed-Hashing for Message Authentication.
+  https://www.rfc-editor.org/rfc/rfc2104
+* RFC 6585, Additional HTTP Status Codes. Section 5, 431 Request Header Fields Too Large.
+  https://www.rfc-editor.org/rfc/rfc6585
+* Tim McLean, "Critical vulnerabilities in JSON Web Token libraries", 31 March 2015.
+  The disclosure of the `none` and key confusion attacks in production libraries.
+  https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/
