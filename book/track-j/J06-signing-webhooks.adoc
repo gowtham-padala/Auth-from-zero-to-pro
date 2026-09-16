@@ -1,0 +1,254 @@
+[[J06]]
+= J06. Signing webhooks, and verifying them correctly
+:status: draft
+:chapter-id: J06
+
+*Part J · Machine, workload & agent identity* · _Builds on <<B13,B13>>, <<B16,B16>>_
+
+____
+The shortest path to making B13 and B16 feel urgent -- because every reader has integrated a
+webhook, and most verified it wrong.
+____
+
+'''
+
+== Why it matters
+
+Your app receives webhooks from a payment provider -- `payment.succeeded` events that credit a
+customer's account. The handler:
+
+[,python]
+----
+@app.post("/webhooks/payments")
+def handle_webhook():
+    event = request.get_json()
+    if event["type"] == "payment.succeeded":
+        credit_account(event["customer"], event["amount"])   # ← no verification
+    return "ok"
+----
+
+An attacker who knows your webhook URL -- it's not secret; it's in your provider dashboard, maybe in
+a leaked config -- simply POSTs their own JSON:
+
+[,bash]
+----
+curl -X POST https://yourapp.com/webhooks/payments \
+  -d '{"type":"payment.succeeded","customer":"attacker","amount":1000000}'
+----
+
+Your app credits them a million. *A webhook endpoint is a publicly-reachable API that performs
+privileged actions, and this one authenticated nothing.* The direction of the call is reversed --
+_they_ call _you_ (<<A08,A08>>) -- so you must verify _their_ identity,
+and the mechanism is a signature you check.
+
+Almost every webhook integration gets this wrong in one of a handful of specific ways. This chapter
+is those ways.
+
+'''
+
+== The mechanism: HMAC over the raw body
+
+Webhook signing is <<B13,B13>> applied directly. The
+provider and you share a secret (<<B10,B10>> -- exchanged
+out-of-band via the dashboard, <<J02,J02>>). The provider signs each request; you verify:
+
+----
+   Provider:  signature = HMAC-SHA256(secret, timestamp + "." + raw_body)   B13
+              sends the body + a header:  X-Signature: t=<ts>,v1=<signature>
+
+   You:       recompute HMAC over what you RECEIVED, compare to the header.
+              Match → it's genuinely from the provider, unmodified.  B13
+----
+
+The signature proves two things (<<B13,B13>>):
+*authenticity* (only someone with the shared secret could produce it -- so it's really the
+provider) and *integrity* (the body wasn't changed in transit). The opening example fails because
+the attacker doesn't have the secret and can't produce a valid signature.
+
+'''
+
+== Verifying correctly -- every trap
+
+[,python]
+----
+import hmac, hashlib, time
+
+WEBHOOK_SECRET = os.environ["WEBHOOK_SECRET"].encode()   # I05
+TOLERANCE = 300   # 5 minutes
+
+@app.post("/webhooks/payments")
+def handle_webhook():
+    # ★ TRAP 1: get the RAW bytes, before any parsing.
+    raw_body = request.get_data()                        # NOT request.get_json()!
+
+    sig_header = request.headers.get("X-Signature", "")
+    timestamp, signature = parse_sig_header(sig_header)   # "t=..., v1=..."
+
+    # ★ TRAP 2: verify over timestamp + raw body, exactly as the provider signed.
+    signed_payload = f"{timestamp}.".encode() + raw_body
+    expected = hmac.new(WEBHOOK_SECRET, signed_payload, hashlib.sha256).hexdigest()
+
+    # ★ TRAP 3: constant-time comparison. NEVER ==.  B16
+    if not hmac.compare_digest(expected, signature):
+        abort(400, "invalid signature")
+
+    # ★ TRAP 4: reject old timestamps — replay protection.
+    if abs(time.time() - int(timestamp)) > TOLERANCE:
+        abort(400, "timestamp outside tolerance")
+
+    # ★ TRAP 5: idempotency — the SAME valid event may arrive twice.
+    event = json.loads(raw_body)                         # NOW it's safe to parse
+    if already_processed(event["id"]):
+        return "ok"                                      # dedupe by event id
+    mark_processed(event["id"])
+
+    process(event)
+    return "ok"
+----
+
+Five traps, and each is a real, common bug:
+
+=== Trap 1 & 2 -- verify the RAW bytes, not a re-serialised parse
+
+*The single most common webhook bug* (<<B13,B13>>):
+
+[,python]
+----
+# ❌ Parse, then re-serialise, then verify — the bytes CHANGED.
+body = json.dumps(request.get_json())    # whitespace, key order, unicode all differ
+verify(secret, body, signature)          # will NOT match
+
+# ✅ Verify the EXACT bytes you received.
+verify(secret, request.get_data(), signature)
+----
+
+`json.dumps(json.loads(x))` is not `x` -- key order, whitespace, and number/unicode formatting all
+change (<<B13,B13>>, <<B01,B01>>).
+The provider signed the _exact bytes on the wire_, so you must verify those exact bytes. Grab the
+raw body _before_ any middleware parses it. This is why <<B13,B13>>
+insists: verify over the bytes you received, never a regenerated form.
+
+=== Trap 3 -- constant-time comparison
+
+[,python]
+----
+if expected == signature:          # ❌ leaks the signature byte-by-byte via timing  B16
+if hmac.compare_digest(expected, signature):   # ✅
+----
+
+The signature is a secret-derived value being compared against attacker-supplied input -- exactly the
+<<B16,B16>> scenario. `==` returns early on the first mismatched byte,
+so an attacker can recover the valid signature one byte at a time. `compare_digest` runs in constant
+time. This is <<B16,B16>>'s webhook example, made real.
+
+=== Trap 4 -- replay protection via timestamp
+
+A signature is valid _forever_ (<<B14,B14>> -- signatures don't
+expire). Without a timestamp, an attacker who captures one valid webhook (from a log, a proxy) can
+*replay* it indefinitely -- resending a genuine `payment.succeeded` a thousand times. Signing the
+*timestamp* into the payload and rejecting old ones bounds the replay window
+(<<D12,D12>> -- freshness, <<F16,F16>>).
+
+=== Trap 5 -- idempotency
+
+Webhooks are delivered _at-least-once_: providers retry on timeout, so the _same valid event_ may
+arrive multiple times legitimately. Process it twice and you credit the account twice. *Dedupe by
+event ID* -- process each event exactly once, even under legitimate retries. This isn't security per
+se, but it's the bug that turns "verified webhook" into "double charge."
+
+'''
+
+== Why webhooks make B13 and B16 urgent
+
+This chapter is deliberately placed to make the crypto foundations feel _necessary_ rather than
+academic. Every trap maps to an earlier chapter, and every one bites in production:
+
+|===
+| Trap | Foundation | The production symptom
+
+| Raw body
+| <<B13,B13>>
+| "The signature never matches"
+
+| HMAC over the right payload
+| <<B13,B13>>
+| Same
+
+| Constant-time compare
+| <<B16,B16>>
+| A subtle, exploitable timing leak
+
+| Timestamp / replay
+| <<B14,B14>>, <<D12,D12>>
+| Replayed events
+
+| Idempotency
+| --
+| Double-processing
+|===
+
+If <<B13,B13>> and <<B16,B16>>
+felt abstract, this is where they cash out: a webhook you verified wrong is either forgeable
+(no signature check), timing-leaky (`==`), or replayable (no timestamp) -- and you _have_ integrated
+a webhook.
+
+'''
+
+== The other direction: signing webhooks you send
+
+If _you_ are the provider sending webhooks, do unto others
+(<<B13,B13>>):
+
+* *Sign every webhook* -- HMAC over `timestamp.body`, per receiver's shared secret.
+* *Include a timestamp* in the signed payload, so receivers can do replay protection.
+* *Include an event ID*, so receivers can dedupe.
+* *Support secret rotation* -- publish _two_ active signing secrets during a rotation window so
+receivers can roll without missing events (<<I06,I06>>) -- the same
+overlap principle as key rotation.
+* *Document the exact signing scheme* -- which bytes, which header format -- so receivers can verify
+the _raw_ body correctly (trap 1).
+* *Consider mTLS or asymmetric signatures* (<<J04,J04>>, <<B14,B14>>)
+for higher-assurance webhooks -- with an asymmetric signature, receivers verify with your _public_
+key and you never share a secret (<<B10,B10>>).
+
+The asymmetric option is worth noting: an HMAC secret shared with every receiver means any receiver
+_could_ forge webhooks to any other (<<B10,B10>>,
+<<B14,B14>>). A signature (you sign with a private key, they verify
+with your public key) avoids that -- the same reasoning as choosing RS256/ES256 over HS256 for
+multi-party JWTs (<<E06,E06>>).
+
+'''
+
+== Terms defined in this chapter
+
+`webhook`, `signature header`, `raw body`, `replay window`
+
+'''
+
+== What to remember
+
+. *A webhook endpoint is a public API that does privileged actions* -- verify the sender's
+identity, or an attacker just POSTs forged events.
+. *The mechanism is HMAC* (<<B13,B13>>) over the request,
+with a shared secret -- proving authenticity and integrity.
+. *Verify the RAW bytes, never a re-serialised parse* -- `json.dumps(json.loads(x)) != x`. This is
+_the_ most common webhook bug.
+. *Constant-time comparison* (<<B16,B16>>), never `==` -- the signature
+is secret-derived and compared against attacker input.
+. *Sign and check a timestamp* -- signatures don't expire, so without it, valid events are
+replayable forever.
+. *Dedupe by event ID* -- at-least-once delivery means the same valid event arrives twice.
+. *Sending webhooks:* sign them, timestamp them, ID them, support secret rotation
+(<<I06,I06>>), and consider asymmetric signatures so receivers can't
+forge to each other.
+
+'''
+
+== Sources
+
+* https://docs.stripe.com/webhooks#verify-manually[Stripe: Verifying webhook signatures] -- the reference implementation of everything here
+* https://www.rfc-editor.org/rfc/rfc2104[RFC 2104 -- HMAC] (<<B13,B13>>)
+* https://www.standardwebhooks.com/[Standard Webhooks specification] -- a cross-provider signing standard
+* https://cheatsheetseries.owasp.org/[OWASP: Webhook security]
+
+'''

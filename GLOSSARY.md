@@ -50,7 +50,7 @@ Columns: **term** | **plain-language definition** | **defined in** | **first use
 | Content-Type | The header that says what format the body is in. | A04 | A04 |
 | stateless | A protocol where the server keeps no memory between requests. HTTP is stateless. | A05 | A05 |
 | state | Any information about a client that outlives a single request. | A05 | A05 |
-| cookie | A small named string a server asks a browser to store and send back on later requests. | A06 | A05 |
+| cookie | A small named string a server asks a browser to store and send back on later requests. | A06 | A06 |
 | Set-Cookie | The response header that creates or updates a cookie. | A06 | A06 |
 | Cookie header | The request header the browser uses to send cookies back. | A06 | A06 |
 | cookie attribute | A flag on a cookie controlling its scope and lifetime — Domain, Path, Expires, Secure, HttpOnly, SameSite. | A06 | A06 |
@@ -120,7 +120,7 @@ Columns: **term** | **plain-language definition** | **defined in** | **first use
 | rainbow table | A precomputed lookup from digests back to inputs. Defeated by salting. | B07 | B07 |
 | offline attack | Attacking stolen hashes on your own hardware, at your own speed, with no rate limit. | B07 | B07 |
 | work factor | A tunable cost parameter that makes a password hash deliberately slow. | B07 | B08 |
-| salt | A unique, non-secret random value mixed into each password hash so identical passwords hash differently. | B08 | B07 |
+| salt | A unique, non-secret random value mixed into each password hash so identical passwords hash differently. | B08 | B08 |
 | pepper | A secret value mixed into every password hash, stored outside the database. | B08 | B08 |
 | key derivation function | A function that stretches a low-entropy secret into a key, slowly and deliberately. | B08 | B08 |
 | bcrypt | A 1999 password hash with a single cost parameter. Still acceptable. 72-byte input limit. | B08 | B08 |
@@ -157,7 +157,7 @@ Columns: **term** | **plain-language definition** | **defined in** | **first use
 | HMAC | Hash-based MAC. A two-pass construction, immune to length extension. `H((K⊕opad) ‖ H((K⊕ipad) ‖ m))`. | B13 | B13 |
 | ipad / opad | The two fixed padding constants (0x36, 0x5c) HMAC XORs the key with. | B13 | B13 |
 | tag | The output of a MAC. | B13 | B13 |
-| digital signature | A MAC where verification uses a *public* key, so anyone can verify and only one party can produce. | B14 | B14 |
+| digital signature | A tag over a message produced with a private key and checked with the matching public key, so anyone can verify and only the key holder can produce. Not a MAC: verifiers cannot forge. | B14 | B14 |
 | non-repudiation | The signer cannot later deny signing, because only they hold the private key. | B14 | B14 |
 | sign | Produce a signature over a digest using a private key. | B14 | B14 |
 | verify | Check a signature against a digest using the public key. | B14 | B14 |
@@ -286,7 +286,7 @@ Columns: **term** | **plain-language definition** | **defined in** | **first use
 
 | Term | Plain-language definition | Defined in | First used in |
 |---|---|---|---|
-| session | Server-remembered state tying a series of requests to one authenticated principal. | E01 | A05 |
+| session | Server-remembered state tying a series of requests to one authenticated principal. | E01 | E01 |
 | session ID | The opaque high-entropy string that names a session. | E01 | E01 |
 | HttpOnly | Cookie attribute that hides a cookie from JavaScript. | E02 | E02 |
 | Secure | Cookie attribute that stops a cookie being sent over plain HTTP. | E02 | E02 |
@@ -298,8 +298,18 @@ Columns: **term** | **plain-language definition** | **defined in** | **first use
 | idle timeout | Expiring a session after inactivity. | E04 | E04 |
 | absolute timeout | Expiring a session a fixed time after creation regardless of activity. | E04 | E04 |
 | session fixation | Making a victim use a session ID the attacker already knows. | E04 | E04 |
-| JWT | JSON Web Token. A compact, self-contained, signed set of claims. RFC 7519. | E05 | E05 |
-| JWS | JSON Web Signature. The signed structure a JWT normally uses. RFC 7515. | E06 | E05 |
+| JWT | JSON Web Token. Three base64url segments joined by dots: a header, a payload of claims, and an HMAC or signature over the first two. RFC 7519. | E05 | E05 |
+| payload | The middle segment of a JWT: the encoded claims. Readable by anyone holding the token. | E05 | E05 |
+| registered claim | One of the seven claim names RFC 7519 §4.1 reserves: `iss`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti`. | E05 | E05 |
+| `exp` | Expiration time claim, in seconds since the Unix epoch. A token is not valid after it. | E05 | E05 |
+| `iat` | Issued-at claim. When the token was minted. | E05 | E05 |
+| `nbf` | Not-before claim. The token is not valid until this time. | E05 | E05 |
+| `typ` | JWT header field naming what kind of object this is, so one kind of token cannot be presented as another. | E05 | E05 |
+| HS256 | HMAC using SHA-256, named in a JWT header. A MAC: every verifier can also mint. | E05 | E05 |
+| RS256 | RSA signature with SHA-256, named in a JWT header. Verifiers hold only the public key. | E05 | E05 |
+| ES256 | ECDSA signature on the P-256 curve with SHA-256, named in a JWT header. 64-byte signatures. | E05 | E05 |
+| EdDSA | Edwards-curve signature (Ed25519), named in a JWT header. | E05 | E05 |
+| JWS | JSON Web Signature. A header, a payload and a signature over both. A JWT is a JWS whose payload is a set of claims. RFC 7515. | E05 | E05 |
 | JWE | JSON Web Encryption. The encrypted variant. RFC 7516. Rare. | E06 | E06 |
 | compact serialization | The `header.payload.signature` dotted base64url form. | E05 | E05 |
 | JOSE | The umbrella spec family: JWS, JWE, JWK, JWA, JWT. | E07 | E07 |
@@ -307,21 +317,21 @@ Columns: **term** | **plain-language definition** | **defined in** | **first use
 | JWK | JSON Web Key. A key expressed as JSON. RFC 7517. | E07 | E07 |
 | JWKS | JSON Web Key Set. A JSON document listing public keys, fetched over HTTPS. | E07 | E07 |
 | kid | Key ID. The header field naming which key in a JWKS signed this token. | E07 | E07 |
-| alg | The header field naming the signing algorithm. Never trust it blindly. | E06 | E06 |
-| `alg: none` | The unsigned JWT type. Accepting it is a two-line total compromise. | E06 | E06 |
-| algorithm confusion | Tricking a verifier into using an RSA public key as an HMAC secret. | E06 | E06 |
+| alg | The JWT header field naming the algorithm that produced the third segment. Attacker-controlled; the verifier decides, not the token. | E05 | E05 |
+| `alg: none` | The registered value meaning an unsecured JWS with an empty signature. A verifier that honours it verifies nothing. RFC 7518 §3.6. | E05 | E05 |
+| algorithm confusion | Presenting an HMAC-tagged token to a verifier configured with a public key, so the public key is used as the HMAC secret. | E05 | E05 |
 | opaque token | A token with no meaning to the client; the server looks it up. | E08 | E08 |
 | reference token | Another name for an opaque token. Points at server state. | E08 | E08 |
 | self-contained token | A token that carries its own claims and needs no lookup. A JWT. | E08 | E08 |
 | signed cookie | A cookie whose value carries a MAC so the server can detect tampering. | E08 | E08 |
-| access token | The credential presented to an API. Short-lived. | E10 | C03 |
+| access token | The credential presented to an API. Short-lived. | E10 | E10 |
 | refresh token | A longer-lived credential used only to obtain new access tokens. | E10 | E10 |
 | rotation | Issuing a new refresh token on every use and invalidating the old one. | E10 | E10 |
 | reuse detection | Noticing a rotated refresh token being presented twice, and killing the whole family. | E10 | E10 |
 | token family | The chain of refresh tokens descending from one authorization. | E10 | E10 |
 | revocation | Making a still-unexpired credential stop working. | E11 | E11 |
 | denylist | A list of revoked token identifiers checked on every request. | E11 | E11 |
-| jti | JWT ID. The unique identifier claim, used for denylists and replay detection. | E11 | E11 |
+| jti | JWT ID. The unique identifier claim. Used for denylists and replay detection in E11. | E05 | E05 |
 | introspection | Asking the issuer whether a token is currently valid. RFC 7662. | E11 | F12 |
 | localStorage | Browser storage readable by any script on the origin. Survives XSS badly. | E12 | E12 |
 | in-memory storage | Holding a token in a JavaScript variable. Gone on refresh, still XSS-readable. | E12 | E12 |
@@ -357,17 +367,17 @@ Columns: **term** | **plain-language definition** | **defined in** | **first use
 | redirect_uri | Where the AS returns the browser after authorization. Must be pre-registered and exactly matched. | F03 | F03 |
 | authorization request | The front-channel request that starts a flow. | F03 | F03 |
 | code exchange | Trading the authorization code plus client credentials for tokens. | F04 | F04 |
-| state | An opaque client value round-tripped through the AS, binding response to request. CSRF defence. | F05 | F05 |
+| state parameter | An opaque client value round-tripped through the AS, binding response to request. CSRF defence. | F05 | F05 |
 | PKCE | Proof Key for Code Exchange. RFC 7636. Binds the code to the client that started the flow. | F06 | F06 |
 | code_verifier | A high-entropy random string the client keeps. | F06 | F06 |
 | code_challenge | `BASE64URL(SHA256(code_verifier))`. Sent in the authorization request. | F06 | F06 |
 | S256 | The only code challenge method you should use. `plain` is a downgrade. | F06 | F06 |
 | downgrade attack | Forcing a weaker option that both sides technically support. | F06 | F06 |
-| scope (OAuth) | A space-separated list of permission labels requested by the client and consented by the user. | F07 | C03 |
+| scope (OAuth) | A space-separated list of permission labels requested by the client and consented by the user. | F07 | F07 |
 | incremental authorization | Requesting more scopes later, when they are actually needed. | F07 | F07 |
-| `aud` | Audience claim. Which resource server may accept this token. | F08 | C03 |
+| `aud` | Audience claim. Who a token is for. A verifier must reject tokens not addressed to it. | C03 | C03 |
 | resource indicator | The `resource` parameter naming the API a token is for. RFC 8707. | F08 | F08 |
-| confused deputy | Tricking a privileged component into misusing its authority on your behalf. | F08 | F08 |
+| confused deputy | Tricking a component that holds authority into using it on an attacker's behalf. In tokens: a genuine token accepted by a service it was never meant for. | E05 | E05 |
 | token passthrough | Forwarding a token you received to a different API. Almost always a vulnerability. | F08 | J08 |
 | public client | A client that cannot keep a secret — SPA, mobile app, CLI. | F09 | F09 |
 | confidential client | A client running on a server that can hold a secret. | F09 | F09 |
@@ -383,7 +393,7 @@ Columns: **term** | **plain-language definition** | **defined in** | **first use
 | consent phishing | A real OAuth consent screen used by a malicious app with a trustworthy-looking name. | F13 | F13 |
 | implicit grant | The dead flow that returned tokens in the URL fragment. Removed in OAuth 2.1. | F15 | F15 |
 | ROPC | Resource owner password credentials grant. The client collects the password. Dead. | F15 | F15 |
-| fragment | The part of a URL after `#`. Never sent to the server. Where implicit put tokens. | F15 | A01 |
+| fragment | The part of a URL after `#`. Never sent to the server. Where implicit put tokens. | A01 | A01 |
 | sender-constrained token | A token usable only by the client that obtained it, proven by a key. | F16 | F16 |
 | mTLS | Mutual TLS. Both sides present certificates. RFC 8705 binds tokens to the client cert. | F16 | F16 |
 | DPoP | Demonstrating Proof of Possession. RFC 9449. A per-request signed JWT binds the token to a key. | F16 | F16 |
@@ -408,10 +418,10 @@ Columns: **term** | **plain-language definition** | **defined in** | **first use
 | OIDC | OpenID Connect. An identity layer on top of OAuth 2. | G02 | G02 |
 | `openid` scope | The scope that turns an OAuth flow into an OIDC flow and produces an ID token. | G02 | G02 |
 | ID token | A JWT about the authentication event, for the client. Never sent to an API. | G03 | G03 |
-| nonce | (OIDC) A client value echoed into the ID token, binding it to this authentication request. | G03 | B09 |
+| nonce (OIDC) | A client value echoed into the ID token, binding it to this authentication request. | G03 | G03 |
 | `at_hash` | A claim binding an ID token to the access token issued with it. | G03 | G04 |
 | hybrid flow | An OIDC flow returning some artifacts on the front channel and some on the back. | G03 | G03 |
-| clock skew | Small differences between machine clocks, which token expiry checks must tolerate. | G04 | G04 |
+| clock skew | Small differences between machine clocks, which token expiry checks must tolerate. | E05 | E05 |
 | discovery | Fetching an IdP's configuration from a well-known URL. | G05 | G05 |
 | `.well-known` | The standard URL prefix for machine-readable metadata. | G05 | G05 |
 | openid-configuration | The OIDC discovery document listing endpoints, keys, and supported features. | G05 | G05 |
@@ -534,7 +544,7 @@ Columns: **term** | **plain-language definition** | **defined in** | **first use
 | secret scanning | Automated searching of public code for credential patterns. | J02 | J02 |
 | service account | A non-human account in a system built for humans. | J03 | J03 |
 | client certificate | A certificate presented by the client during a TLS handshake. | J04 | J04 |
-| certificate binding | Tying a token to the client certificate that requested it. | J04 | F16 |
+| certificate binding | Tying a token to the client certificate that requested it. | J04 | J04 |
 | SPIFFE | A standard for workload identity: a URI name and a short-lived certificate. | J05 | J05 |
 | SPIFFE ID | `spiffe://trust-domain/path` — a workload's name. | J05 | J05 |
 | SVID | SPIFFE Verifiable Identity Document. The workload's credential. | J05 | J05 |

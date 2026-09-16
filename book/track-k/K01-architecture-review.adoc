@@ -1,0 +1,296 @@
+[[K01]]
+= K01. One app, all five layers: architecture review
+:status: draft
+:chapter-id: K01
+
+*Part K · Capstone* · _Builds on all tracks_
+
+____
+The capstone. One application, every layer, assembled -- and reviewed against OWASP ASVS before a
+line of it is built. This is where the whole book becomes one coherent system.
+____
+
+'''
+
+== The document-sharing app, complete
+
+The running project (link:../../README.md[README]) has accumulated every layer. Here it is, whole --
+each piece a chapter, the assembly a system. This is the review you do _before_ building
+(<<K02,K02>>, <<K03,K03>>), because architecture mistakes are
+the expensive ones (<<C04,C04>>).
+
+----
+   ┌─────────────────────────────────────────────────────────────────────┐
+   │  THE FIVE LAYERS (C01)                                               │
+   │                                                                     │
+   │  1. AUTHENTICATION   passwords (Argon2id) + TOTP + passkeys    D     │
+   │  2. SESSIONS         opaque server-side sessions, __Host- cookie  E  │
+   │  3. DELEGATION       OAuth 2.1 for third-party API access     F     │
+   │  4. FEDERATION       OIDC + SAML SSO, multi-tenant            G     │
+   │  5. AUTHORIZATION    ReBAC for sharing + RBAC for admin       H     │
+   │                                                                     │
+   │  + LIFECYCLE/OPS     SCIM, secrets, rotation, audit, IR       I     │
+   │  + MACHINE           API keys, mTLS, agent auth (MCP)         J     │
+   └─────────────────────────────────────────────────────────────────────┘
+----
+
+'''
+
+== The request path, end to end
+
+One request -- _"Alice's document-sharing app, Bob deletes a shared document"_ -- traced through every
+layer, so you can see how the tracks compose (<<C01,C01>>):
+
+----
+   DELETE /api/documents/9182
+   Cookie: __Host-session=8f14e45f...
+      │
+   ┌──▼── TRANSPORT ────────────────────────────────────────────┐
+   │ HTTPS (TLS 1.3), HSTS.  B17                                 │
+   └──┬─────────────────────────────────────────────────────────┘
+   ┌──▼── SESSION (layer 2) ────────────────────────────────────┐
+   │ Look up sha256(session) → user=bob, tenant=88.  E03/E04    │
+   │ (auth happened days ago — layer 1.  amr/acr on session. D18)│
+   │ Fail → 401.                                                │
+   └──┬─────────────────────────────────────────────────────────┘
+   ┌──▼── TENANT ISOLATION ─────────────────────────────────────┐
+   │ SET app.current_tenant = 88 (RLS).  H09/H10                │
+   │ Document 9182 must be in tenant 88 — or it doesn't exist.  │
+   └──┬─────────────────────────────────────────────────────────┘
+   ┌──▼── AUTHORIZATION (layer 5) ──────────────────────────────┐
+   │ ReBAC check: may bob DELETE document:9182?  H07/H08        │
+   │   → is he owner, or editor of it or its parent folder?     │
+   │ Fail → 403 (or 404 to hide existence).  A03/H14           │
+   └──┬─────────────────────────────────────────────────────────┘
+   ┌──▼── ACT + PROVE ──────────────────────────────────────────┐
+   │ Delete. Write a tamper-evident audit entry.  H13           │
+   │ Cache-Control: no-store.  A04                              │
+   └────────────────────────────────────────────────────────────┘
+----
+
+Every box is a layer, every layer a track. The <<C01,C01>>
+insight made concrete: authentication happened once, days ago; *sessions and authorization run on
+every request*, which is where the bugs live (<<H14,H14>>).
+
+'''
+
+== The security boundaries
+
+Where trust changes, and a check is mandatory (<<A07,A07>>,
+<<C04,C04>>):
+
+----
+   Browser  ═══boundary═══  Your server  ═══boundary═══  Third-party API
+   (untrusted:              (trusted, but              (their trust domain:
+    A07)                     every input checked)       validate aud, F08)
+
+   Agent  ═══boundary═══  MCP server  ═══boundary═══  Tool
+   (semi-trusted: J07)     (resource server)          (audience-bound token)
+
+   Service ═══boundary═══ Service     (mTLS, J04 — "internal" is not trust, H12)
+----
+
+Each boundary is a place <<A07,A07>>'s rule applies: everything
+crossing it is untrusted until verified. The architecture review is largely _finding every boundary
+and confirming there's a check on it._
+
+'''
+
+== The design decisions, and where each was made
+
+The capstone is a series of choices from across the book. Stated as decisions, with the chapter:
+
+|===
+| Decision | Choice | Why | Chapter
+
+| Login identifier
+| Email + passkeys
+| Universal + phishing-resistant
+| <<D01,D01>>, <<D14,D14>>
+
+| Password storage
+| Argon2id
+| The 2026 standard
+| <<D03,D03>>
+
+| Second factor
+| Passkey > TOTP > (SMS fallback)
+| Phishing resistance
+| <<D11,D11>>, <<D12,D12>>
+
+| Session type
+| *Opaque, server-side*
+| First-party → revocable
+| <<E09,E09>>
+
+| Token storage
+| `__Host-` `HttpOnly` cookie
+| Survives XSS
+| <<E02,E02>>, <<E12,E12>>
+
+| SPA architecture
+| BFF
+| Tokens off the browser
+| <<F17,F17>>
+
+| Third-party access
+| OAuth 2.1 + PKCE
+| Delegation done right
+| <<F06,F06>>
+
+| Enterprise login
+| OIDC + SAML, multi-tenant
+| Customers require it
+| <<G08,G08>>, <<G09,G09>>
+
+| Sharing authorization
+| *ReBAC (OpenFGA)*
+| RBAC breaks on sharing
+| <<H04,H04>>, <<H08,H08>>
+
+| Admin authorization
+| RBAC
+| Functional roles
+| <<H04,H04>>
+
+| Tenant isolation
+| RLS
+| Unbypassable
+| <<H10,H10>>
+
+| Enforcement point
+| Service layer + RLS
+| No path bypasses it
+| <<H02,H02>>
+
+| Provisioning
+| SCIM + JIT
+| Enterprise lifecycle
+| <<I02,I02>>
+
+| Secrets
+| KMS + workload identity
+| Never hold the key
+| <<I05,I05>>
+
+| Machine auth
+| mTLS internal, API keys external
+| Right tool per case
+| <<J02,J02>>, <<J04,J04>>
+
+| Agent auth
+| Delegated, task-scoped, MCP
+| Semi-trusted delegate
+| <<J07,J07>>, <<J08,J08>>
+|===
+
+The pattern across the table: *each choice is the one the relevant track argued for.* The capstone
+isn't a new design -- it's the book's recommendations, assembled and made mutually consistent.
+
+'''
+
+== Review against OWASP ASVS
+
+Before building, review the design against a standard -- *OWASP ASVS* (Application Security
+Verification Standard) gives testable requirements (<<I07,I07>>). The three
+chapters that matter here:
+
+----
+   ASVS V2 — Authentication
+     ☐ Argon2id storage, breach-blocklist, MFA, no composition rules   D03/D04
+     ☐ Rate limiting, enumeration resistance, secure recovery          D07/D08/D09
+   ASVS V3 — Session Management
+     ☐ High-entropy session IDs, __Host- cookie, rotation, timeouts    E02/E04
+     ☐ Logout invalidates server session; "log out everywhere"         E14/E13
+   ASVS V7 (or V4) — Access Control
+     ☐ Deny by default, fail closed, enforced server-side              H01/H02
+     ☐ Object-level authorization (no IDOR), tenant isolation          H14/H09
+----
+
+The review is a checklist walk: for each ASVS requirement, _where in the architecture is it
+satisfied, and how is it tested_ (<<I07,I07>>)? A requirement with no
+answer is a gap to fix before building -- the cheapest possible time to find it
+(<<C04,C04>>).
+
+'''
+
+== The threat model, one more time
+
+Who's attacking this app, and what stops them (<<C04,C04>>)? The
+review confirms a defence for each realistic attacker:
+
+|===
+| Attacker | Defence | Chapter
+
+| Credential stuffer
+| Breach blocklist, rate limiting, MFA
+| <<D04,D04>>, <<D08,D08>>
+
+| Phisher
+| Passkeys (origin-bound)
+| <<D14,D14>>
+
+| *Curious/malicious user (IDOR)*
+| Object-level ReBAC + RLS
+| <<H14,H14>>
+
+| Cross-tenant attacker
+| RLS + tenant-scoped everything
+| <<H09,H09>>
+
+| XSS-capable attacker
+| `HttpOnly`, CSP, opaque session
+| <<E16,E16>>
+
+| Token thief
+| Short lifetimes, revocation, sender-constraint
+| <<E10,E10>>, <<F16,F16>>
+
+| Departed employee
+| SCIM deprovision + session kill
+| <<I03,I03>>
+
+| Manipulated agent
+| Task-scoped delegation, human-in-loop
+| <<J07,J07>>
+|===
+
+The most dangerous is still the *curious/malicious user* (<<C04,C04>>,
+<<H14,H14>>) -- inside every perimeter by design, defeated
+only by per-object authorization. The architecture must make IDOR _impossible_, not merely
+prevented on the paths someone remembered.
+
+'''
+
+== Terms defined in this chapter
+
+`ASVS`, `security boundary`
+
+'''
+
+== What to remember
+
+. *The capstone is the whole book, assembled* -- five layers (<<C01,C01>>)
+plus lifecycle and machine identity, made mutually consistent.
+. *Trace one request through every layer* -- session, tenant isolation, authorization, act,
+audit -- and see that *sessions and authorization run on every request.*
+. *Review the architecture before building* -- architecture mistakes are the expensive ones
+(<<C04,C04>>).
+. *Every choice is the one its track argued for* -- the capstone is the book's recommendations
+made coherent, not a new design.
+. *Find every security boundary and confirm a check on it* (<<A07,A07>>) --
+that _is_ the review.
+. *Walk OWASP ASVS V2/V3/V7* -- for each requirement, where is it satisfied and how is it tested
+(<<I07,I07>>)?
+. *The curious/malicious user is the top threat* -- the architecture must make IDOR _impossible_
+(<<H14,H14>>).
+
+'''
+
+== Sources
+
+* https://owasp.org/www-project-application-security-verification-standard/[OWASP ASVS] -- V2, V3, V7 (or V4 by version)
+* Yvonne Wilson & Abhishek Hingnikar, _Solving Identity Management in Modern Applications_, 2nd ed. -- the five-layer structural spine
+* _API Security in Action_ (Neil Madden) -- the technical reference for E, F, H
+
+'''

@@ -1,0 +1,209 @@
+[[I09]]
+= I09. Detecting account takeover: signals and risk scoring
+:status: draft
+:chapter-id: I09
+:builds-on: D08
+
+== Why prevention isn't enough
+
+Everything so far _prevents_ unauthorized access. But prevention assumes the credential is in the
+right hands. ATO is what happens when it isn't:
+
+----
+   Tracks D–H:  "Is this a valid credential?"        → yes → allow
+   ATO defence: "Does this login look like THIS       → no  → challenge / block / alert
+                 user's normal behaviour?"
+----
+
+Detection is probabilistic where prevention is binary. It won't have a definitive "this is an
+attacker" signal -- it has _signals_ that this login is _unusual_, combined into a _risk score_,
+which drives a _proportional response_. This is defence in depth (<<C04,C04>>)
+for the case where the front-line control (the credential) has already been defeated.
+
+'''
+
+== The signals
+
+What makes a login look _unlike_ the user:
+
+|===
+| Signal | Why it's suspicious
+
+| *Impossible travel*
+| Login from London, then Tokyo 20 minutes later -- physically impossible
+
+| *New device / fingerprint*
+| Never-seen device (<<D17,D17>>)
+
+| *New location / country*
+| First login from a new country
+
+| *Datacentre / VPN / Tor IP*
+| Legitimate users rarely log in from an AWS IP
+
+| *Known-bad IP*
+| On a threat-intel blocklist
+
+| *Credential-stuffing pattern*
+| This IP just failed against 500 other accounts (<<D08,D08>>)
+
+| *Breached password*
+| The password just appeared in a new breach corpus (<<D04,D04>>)
+
+| *Unusual time*
+| 3am for a 9-to-5 user
+
+| *Rapid sensitive actions*
+| Immediately changes email + password + MFA -- the takeover-lockout sequence
+
+| *Behavioural anomaly*
+| Bulk-downloads data they've never accessed before (<<H14,H14>>)
+|===
+
+*Impossible travel* is the highest-signal and most-cited: it requires two data points (previous
+login location + this one) and simple arithmetic, and a positive is a near-certain compromise or
+shared account. *The rapid-sensitive-actions sequence* is the one that matters most to catch,
+because it's the attacker making their access _permanent_ (<<D09,D09>>) --
+detecting it in real time is the difference between a scare and a lockout.
+
+'''
+
+== Risk scoring: combine, don't gate individually
+
+No single signal is decisive -- a real user _does_ travel, _does_ get a new phone, _does_ use a
+VPN. Gating on any one produces false positives that train users to hate you
+(<<D08,D08>>). Instead, *combine signals into a score*:
+
+[,python]
+----
+def login_risk(user, request) -> str:
+    score = 0
+    if impossible_travel(user, request):          score += 60   # near-certain
+    if new_device(user, request):                 score += 20
+    if new_country(user, request):                score += 15
+    if is_datacenter_ip(request.ip):              score += 15
+    if ip_recently_stuffed_others(request.ip):    score += 40   # D08
+    if password_in_recent_breach(user):           score += 30   # D04
+    if unusual_hour(user, request):               score += 10
+
+    if score >= 70:   return "high"
+    if score >= 30:   return "elevated"
+    return "normal"
+----
+
+The response is *proportional to the score* -- escalate friction, don't slam a door
+(<<D18,D18>>):
+
+|===
+| Risk | Response
+
+| Normal
+| Proceed
+
+| Elevated
+| *Step up* -- require MFA / re-auth for this login or the next sensitive action (<<D18,D18>>)
+
+| High
+| Step up now + *notify the user* ("new login from Tokyo -- was this you?")
+
+| Critical (during session)
+| *Terminate the session* (<<E13,E13>>), force full re-auth, alert
+|===
+
+The principle from <<D18,D18>>: *escalate, don't block.* A
+legitimate user on a business trip gets an MFA prompt (mild friction); an attacker gets a wall
+they can't pass (they don't have the second factor). Blocking outright punishes the traveller and
+generates support tickets; step-up catches the attacker while letting the real user through.
+
+'''
+
+== Detection continues _after_ login
+
+ATO detection is not only at the login gate. A session can be hijacked mid-flight
+(<<E16,E16>>), so continuous signals matter
+(<<D18,D18>>):
+
+* *The IP/location changing mid-session* -- the cookie moved to a different machine.
+* *The rapid-sensitive-actions sequence* -- email + password + MFA changes in quick succession.
+* *Behavioural drift* -- a support agent's account suddenly bulk-exporting customer data
+(<<H14,H14>>).
+
+These feed the same score, driving a step-up (<<D18,D18>>) or a
+session kill (<<E13,E13>>) during the session -- the
+continuous-assurance model, not a one-time check at login.
+
+'''
+
+== The user is your best detector
+
+The most effective ATO control is often the cheapest: *tell the user, and let them react.*
+Throughout this book, notification is a recurring control (<<D09,D09>>,
+<<E13,E13>>, <<D13,D13>>):
+
+* *"New login from [location/device] -- was this you?"* with a one-click "secure my account"
+that kills sessions and forces a reset.
+* *Alert on sensitive changes* -- email change, MFA removal, recovery code use -- to the _old_
+contact channel, so the real owner learns of a takeover in progress and can stop it
+(<<D09,D09>>).
+* *A visible login/activity history* the user can review (<<E13,E13>>) --
+the user recognising an entry they didn't make is frequently how ATO is discovered at all.
+
+The user knows their own behaviour better than any model. A well-placed notification turns them
+into a real-time detector with zero false-positive cost to you -- they simply ignore the ones that
+were them.
+
+'''
+
+== Build vs buy
+
+Sophisticated ATO detection -- device fingerprinting, IP reputation, behavioural baselines,
+impossible-travel at scale -- is genuinely hard, and it's a place where specialist providers add
+real value (<<C05,C05>>): they see attack patterns across many customers
+that you can't see alone, and maintain threat-intel feeds you can't.
+
+But the _fundamentals_ are cheap and high-value, and you should build them regardless of any
+vendor:
+
+* *Impossible travel* -- you have login locations; the arithmetic is trivial.
+* *Log and alert on failed-login spikes* (<<D08,D08>>,
+<<I08,I08>>).
+* *Notify users of new-device logins and sensitive changes.*
+* *Check passwords against breach corpora* (<<D04,D04>>).
+
+Start with those -- they catch the common attacks. Add a vendor when the volume and sophistication
+of attacks against you justify it.
+
+'''
+
+== Terms defined in this chapter
+
+`account takeover` (ATO), `risk score`, `impossible travel`, `device fingerprint`
+
+'''
+
+== What to remember
+
+. *ATO defeats authentication rather than breaking it* -- a valid credential in the wrong hands
+is invisible to every prevention control. The answer is _detection_.
+. *Signals, not certainties:* impossible travel, new device/location, datacentre IPs,
+stuffing patterns, breached passwords, rapid sensitive changes.
+. *Combine signals into a risk score* -- no single signal gates, because real users travel and
+change devices.
+. *Respond proportionally: escalate, don't block.* Step up on elevated risk, notify on high,
+kill the session on critical (<<D18,D18>>).
+. *Detection continues after login* -- mid-session IP changes and the takeover-lockout sequence
+are the highest-value catches.
+. *The user is your best detector* -- "was this you?" notifications turn every user into a
+real-time, zero-false-positive-cost sensor.
+. *Build the fundamentals* (impossible travel, failed-login alerts, breach checks,
+notifications) regardless; *buy* sophisticated detection when attack volume justifies it.
+
+'''
+
+== Sources
+
+* https://owasp.org/www-community/attacks/Credential_stuffing[OWASP: Credential Stuffing / Account Takeover]
+* https://csrc.nist.gov/pubs/sp/800/63/b/4/final[NIST SP 800-63B-4 §5.2 -- reauthentication and risk signals]
+* Google Security Blog, https://security.googleblog.com/2019/05/new-research-how-effective-is-basic.html[account-hijacking prevention research]
+
+'''

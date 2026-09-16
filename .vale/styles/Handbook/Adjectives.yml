@@ -1,0 +1,9 @@
+extends: existence
+message: "'%s': give a number, not an adjective."
+level: warning
+ignorecase: true
+tokens:
+  - very (slow|fast|large|small|expensive|cheap)
+  - extremely
+  - incredibly
+  - highly (secure|efficient|scalable)

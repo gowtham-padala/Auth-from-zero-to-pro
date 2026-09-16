@@ -1,0 +1,87 @@
+[preface]
+[[preface]]
+= Preface
+:status: final
+
+A login form is about forty lines of code. The first one most of us write works on the
+first try, and it is wrong in ways that take years to surface: the password table leaks
+and every password is recoverable, a support engineer can read a session token out of a
+log file and become any customer, a partner integration accepts a token that was minted
+for somebody else. None of those failures shows up in testing. All of them show up in an
+incident report.
+
+This book exists because the material needed to avoid them is scattered across forty
+years of specifications, and because almost every explanation of it assumes you already
+know the thing it is about to explain. A guide to JSON Web Tokens assumes you know what a
+signature is. A guide to signatures assumes you know what a hash is. A guide to hashes
+assumes you know what a byte is. The chain of assumptions is long, and the reader who is
+missing one link usually does not know which one.
+
+== Who this is for
+
+You can write code. That is the only assumption. You do not need to know what a hash is,
+what a cookie is, what encryption is, or what a token is. Every one of those is taught
+here from the beginning, in order, before anything is built on it.
+
+If you already know some of this, the parts are independent enough that you can enter
+where your knowledge stops. Every chapter names what it builds on, and the ledger at the
+back lists where each term is first defined.
+
+== What the book covers
+
+The word "auth" is used for at least five different problems, and much of the confusion
+in the field comes from treating them as one. Proving who someone is. Remembering that
+across requests. Letting one program act for a user at another. Trusting another
+organisation's statement about who someone is. Deciding what someone may do once they
+are in. Each is a part of this book, with its own mechanisms and its own attacks.
+
+Two parts come first and are not about auth at all. Part A is how the web works at the
+level of bytes on a wire, because every auth decision is downstream of what an attacker
+can see and change. Part B is the cryptography auth is made of, from bits to
+certificates. Nothing in Part B is implemented by hand for production. All of it is
+explained until it stops being magic.
+
+One application runs through the whole book: a document-sharing service. It is chosen
+because sharing forces the hardest authorization questions, and because a service that
+only has an admin and a user never meets them.
+
+== How this book is built
+
+Three rules shape every chapter, and they are enforced by the build rather than by good
+intentions.
+
+No term appears before it has been defined. A ledger of every term and the chapter that
+defines it is part of the source, and a check runs on every change. If a chapter uses a
+word the reader has not been given, the book does not build.
+
+Mechanism is separated from recommendation. How a thing works does not change from year
+to year. Which parameters to choose, which version to run and which product to trust
+change often. The mechanism prose in each chapter carries no version numbers and no
+product names. Recommendations live in blocks marked with the date they were written,
+and every one of them is collected into a dated appendix, so you can see how old a piece
+of advice is before you take it.
+
+Every claim about security cites a source you can check: the section of a specification,
+a standards publication, or a paper. Where no source could be found, the text says so
+instead of sounding confident.
+
+Every part that builds something ends with a chapter in which you break it. The attack
+chapters are not optional. They are where the reasons for the mechanisms become obvious.
+
+== How to read it
+
+Front to back works. Parts A through E are a spine; everything after them attaches to
+that spine and can be read in the order your work demands. If you need an answer now, the
+decision appendix asks six questions about your system and points you at the chapters
+that argue for each answer.
+
+ifdef::web[]
+This is the web edition. The same source builds a PDF and an EPUB; the links to download
+them are on the title page.
+endif::web[]
+
+ifdef::book[]
+This is the print edition. The same source builds a web edition, which is updated as
+chapters change and is the place to check whether a dated recommendation has been
+revised.
+endif::book[]

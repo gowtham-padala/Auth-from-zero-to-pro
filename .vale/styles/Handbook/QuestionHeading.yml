@@ -1,0 +1,7 @@
+extends: existence
+message: "Rhetorical questions as headings are banned."
+level: error
+scope: heading
+nonword: true
+raw:
+  - '\?\s*$'

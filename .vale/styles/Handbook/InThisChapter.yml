@@ -1,0 +1,6 @@
+extends: existence
+message: "Do not announce the chapter. Just start."
+level: error
+raw:
+  - '(?i)\bin this chapter,? (we|you|I)\b'
+  - '(?i)\bthis chapter (will|covers|explains|introduces)\b'

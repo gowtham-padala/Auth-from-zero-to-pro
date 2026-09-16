@@ -1,0 +1,177 @@
+[[J05]]
+= J05. Workload identity: SPIFFE, SPIRE, and cloud federation
+:status: draft
+:chapter-id: J05
+:builds-on: J04
+
+== The insight: attestation, not secrets
+
+____
+*A workload proves its identity by what it _is_ and _where it runs_ -- attested by the platform --
+rather than by a secret it holds.*
+____
+
+The platform already knows things about a workload that an attacker can't easily fake: which node
+it's on, which Kubernetes service account it runs under, which container image it is, which cloud
+instance with which IAM role. That knowledge is *attestation* -- the platform _vouches_ for the
+workload's identity -- and it's the root of trust that ends the regress:
+
+----
+   SECRET-BASED (the regress)            ATTESTATION-BASED (workload identity)
+   ──────────────────────────            ────────────────────────────────────
+   workload needs a secret               the PLATFORM attests what the workload is
+   → to get it, needs another secret      → issues it a SHORT-LIVED credential
+   → ...bottom turtle                     → no long-lived secret to bootstrap, store, or leak
+----
+
+There is no first secret to distribute, because identity is grounded in _facts about the workload_
+the platform can verify. This is the ultimate expression of <<I05,I05>>'s
+principle -- the best secret is one you never hold -- and of <<F10,F10>>'s
+"prefer workload identity to a static client secret."
+
+'''
+
+== SPIFFE and SPIRE
+
+*SPIFFE* (Secure Production Identity Framework For Everyone) is the _standard_ for workload
+identity; *SPIRE* is its reference _implementation_.
+
+Two core concepts:
+
+*The SPIFFE ID* -- a URI that names a workload:
+
+----
+   spiffe://trust-domain/path
+   spiffe://example.com/ns/prod/sa/checkout      ← the checkout service, in prod
+----
+
+It's the workload's stable name, within a *trust domain* (an administrative boundary, like a
+company or an environment).
+
+*The SVID* (SPIFFE Verifiable Identity Document) -- the workload's _credential_, carrying its
+SPIFFE ID:
+
+* *X.509-SVID* -- a short-lived X.509 certificate (<<B15,B15>>),
+used directly for *mTLS* (<<J04,J04>>).
+* *JWT-SVID* -- a signed JWT (<<E06,E06>>) for contexts
+where a certificate is awkward.
+
+How SPIRE issues one, ending the regress:
+
+----
+   1. A workload starts and asks the local SPIRE agent: "who am I?"
+   2. The agent ATTESTS the workload — checks platform facts:
+        - node attestation:     is this really node N in our cluster?
+        - workload attestation:  which K8s service account / process / image is this?
+   3. If the attestation matches a registered identity, SPIRE issues a
+      SHORT-LIVED SVID (minutes to an hour), auto-rotated before expiry.  I06
+   4. The workload uses the SVID for mTLS / token auth. No static secret ever existed.
+----
+
+The attestation in step 2 is the whole trick: the workload proves _what it is_ (facts the platform
+already knows and can verify), and gets a credential _because_ of it -- no secret to bootstrap.
+
+'''
+
+== Why short-lived and auto-rotated matters
+
+SVIDs live minutes to an hour and rotate automatically (<<I06,I06>>). This
+isn't incidental -- it's central to the security model:
+
+* *A leaked SVID is worthless in an hour* -- the blast radius (<<I10,I10>>)
+of a stolen credential shrinks from "forever" to "minutes."
+* *Rotation is automatic*, so the <<J03,J03>> failure ("who rotates the robot's
+password?") simply can't happen -- there's no long-lived credential to forget to rotate.
+* *Revocation is easy* -- stop attesting the workload, and it can't renew; the current SVID expires
+in minutes (<<E11,E11>>).
+
+Compare the <<J03,J03>> service account: a static password, in a config file, for
+years. Workload identity is its inverse on every axis -- short-lived, auto-rotated, attested, with no
+stored secret. This is the _good_ version of machine identity the whole track builds toward.
+
+'''
+
+== Cloud workload identity federation
+
+You don't always need SPIRE. The major clouds provide workload identity natively, on the same
+attestation principle:
+
+|===
+| Platform | Mechanism
+
+| *AWS*
+| IAM roles -- an EC2 instance / EKS pod / Lambda assumes a role; the platform attests it, issues short-lived credentials via the metadata service. No static key.
+
+| *GCP*
+| Service accounts with *Workload Identity Federation* -- a K8s service account maps to a GCP identity, attested by the cluster.
+
+| *Azure*
+| *Managed identities* -- the platform provides an identity to a VM/function, no stored secret.
+|===
+
+*Federation* (<<G02,Track G>>'s idea, applied to workloads)
+lets these cross boundaries: a Kubernetes workload can present its *service account token* (a
+signed JWT the cluster issues), and a cloud provider -- or your own auth server
+(<<F10,F10>>) -- _federates_ that: trusts the cluster's attestation
+and exchanges it for its own credential (<<F19,F19>>). The workload
+proves _what it is_ to its own platform, and that proof is trusted across the boundary -- no shared
+secret between them.
+
+This is why <<F10,F10>> said the best client credential is _no static
+credential_: a GitHub Actions job can authenticate to AWS with *no stored AWS key*, by presenting
+its OIDC token, which AWS federates. The static secret -- the thing that leaks
+(<<A10,A10>>, <<I10,I10>>) -- is
+eliminated entirely.
+
+'''
+
+== The maturity ladder
+
+Where this leaves machine identity, from worst to best (<<J03,J03>>,
+<<J02,J02>>, <<F10,F10>>):
+
+----
+   ❌  Shared static password in config       J03 — the anti-pattern
+   ⚠️  API key, hashed, rotated               J02 — fine for simple external cases
+   ⚠️  Client-credentials with a static secret F10 — better, but the secret still exists
+   ✅  Workload identity (attestation)         J05 — no static secret at all
+   ✅✅ Federated workload identity             J05 — no secret, across boundaries
+----
+
+Move down the ladder as your platform allows. The direction is always toward _less stored secret_
+and _more attestation_, because the secret you don't store is the one that can't leak.
+
+'''
+
+== Terms defined in this chapter
+
+`SPIFFE`, `SPIFFE ID`, `SVID`, `SPIRE`, `attestation (workload)`, `trust domain`
+
+'''
+
+== What to remember
+
+. *The bottom-turtle problem:* every credential needs a credential to obtain it. Workload
+identity breaks the regress with *attestation* -- proving _what you are_, not _what secret you
+hold_.
+. *The platform already knows facts about a workload* (node, service account, image) an attacker
+can't fake -- that's the root of trust, and there's no first secret to distribute.
+. *SPIFFE* is the standard; *SPIRE* the implementation. A *SPIFFE ID* names the workload; an
+*SVID* (X.509 or JWT) is its short-lived, auto-rotated credential.
+. *Short-lived + auto-rotated* shrinks a leak's blast radius to minutes and makes the
+<<J03,J03>> "who rotates it?" failure impossible.
+. *Cloud workload identity* (AWS IAM roles, GCP WIF, Azure managed identities) does the same
+natively -- no stored key.
+. *Federation* lets attestation cross boundaries -- a K8s or GitHub Actions workload authenticates
+to a cloud with *no static secret* (<<F10,F10>>, <<F19,F19>>).
+. *The maturity ladder points toward less stored secret* -- the secret you don't hold can't leak.
+
+'''
+
+== Sources
+
+* https://spiffe.io/docs/latest/spiffe-about/overview/[SPIFFE / SPIRE documentation]
+* https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles.html[AWS: IAM roles] / https://cloud.google.com/iam/docs/workload-identity-federation[GCP Workload Identity Federation] / https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/overview[Azure managed identities]
+* https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect[GitHub Actions: OIDC hardening (no stored cloud keys)]
+
+'''
