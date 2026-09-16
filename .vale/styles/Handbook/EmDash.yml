@@ -1,0 +1,7 @@
+extends: existence
+message: "Em-dash aside. Allowed sparingly; if this is a tic, use a full stop or a comma."
+level: warning
+nonword: true
+tokens:
+  - '—'
+  - '\s--\s'

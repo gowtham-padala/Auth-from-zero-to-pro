@@ -1,0 +1,18 @@
+extends: existence
+message: "'%s' is on the banned-word list in CLAUDE.md. Say the plain thing."
+level: error
+ignorecase: true
+tokens:
+  - leverages?d?
+  - leveraging
+  - utili[sz](e|es|ed|ing|ation)
+  - robust(ly|ness)?
+  - powerful(ly)?
+  - seamless(ly)?
+  - delv(e|es|ed|ing)
+  - crucial(ly)?
+  - essential(ly|s)?
+  - landscapes?
+  - journeys?
+  - unlock(s|ed|ing)?
+  - empower(s|ed|ing|ment)?

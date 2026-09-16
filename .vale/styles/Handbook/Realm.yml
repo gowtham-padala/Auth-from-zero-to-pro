@@ -1,0 +1,11 @@
+extends: existence
+message: "'realm' is banned except as the technical term (home realm discovery, Kerberos realm, the WWW-Authenticate realm parameter)."
+level: error
+ignorecase: true
+tokens:
+  - realms?
+exceptions:
+  - home realm discovery
+  - Kerberos realm
+  - realm parameter
+  - realm=

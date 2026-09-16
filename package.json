@@ -1,0 +1,8 @@
+{
+  "name": "auth-from-zero-to-pro",
+  "private": true,
+  "description": "Diagram tooling for the Auth handbook build",
+  "devDependencies": {
+    "@mermaid-js/mermaid-cli": "^11.4.2"
+  }
+}
