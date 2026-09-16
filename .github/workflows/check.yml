@@ -41,6 +41,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: npm ci
+      - run: npx puppeteer browsers install chrome
       - run: python3 scripts/build-recommendations.py
       - run: make book web
       - uses: actions/upload-artifact@v4

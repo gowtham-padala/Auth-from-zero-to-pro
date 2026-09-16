@@ -12,7 +12,8 @@ BOOK_SRC   := book/book.adoc
 ADOC_SRC   := $(shell find book -name '*.adoc')
 FINAL      := $(shell python3 scripts/chapters.py --status final)
 LINT_FILES := book/preface.adoc $(FINAL)
-DIAGRAM    := -r asciidoctor-diagram -a "imagesoutdir=$(CURDIR)/build/images" -a "imagesdir=$(CURDIR)/build/images"
+PUPPETEER  := -a "mermaid-puppeteer-config=$(CURDIR)/puppeteer-config.json"
+DIAGRAM    := -r asciidoctor-diagram $(PUPPETEER) -a "imagesoutdir=$(CURDIR)/build/images" -a "imagesdir=$(CURDIR)/build/images"
 COMMON     := -a source-highlighter=rouge -a icons=font -a xrefstyle=short -a sectanchors -a experimental --failure-level=WARN
 
 .PHONY: all book pdf epub web check test glossary lint app-test recommendations clean
@@ -30,13 +31,13 @@ build/auth-from-zero-to-pro.pdf: $(BOOK_SRC) $(ADOC_SRC) $(wildcard diagrams/*.m
 
 build/auth-from-zero-to-pro.epub: $(BOOK_SRC) $(ADOC_SRC) $(wildcard diagrams/*.mmd) book/appendix-recommendations.adoc
 	@mkdir -p build
-	bundle exec asciidoctor-epub3 $(COMMON) -r asciidoctor-diagram -a "imagesoutdir=$(CURDIR)/build/images" -a imagesdir=../build/images -a book -a toc -o $@ $(BOOK_SRC)
+	bundle exec asciidoctor-epub3 $(COMMON) -r asciidoctor-diagram $(PUPPETEER) -a "imagesoutdir=$(CURDIR)/build/images" -a imagesdir=../build/images -a book -a toc -o $@ $(BOOK_SRC)
 
 web: site/index.html
 
 site/index.html: $(BOOK_SRC) $(ADOC_SRC) $(wildcard diagrams/*.mmd) book/appendix-recommendations.adoc
 	@mkdir -p site
-	bundle exec asciidoctor $(COMMON) -r asciidoctor-diagram -a "imagesoutdir=$(CURDIR)/site/images" -a imagesdir=images \
+	bundle exec asciidoctor $(COMMON) -r asciidoctor-diagram $(PUPPETEER) -a "imagesoutdir=$(CURDIR)/site/images" -a imagesdir=images \
 	  -a web -a toc=left -a toclevels=2 -a linkcss! -o $@ $(BOOK_SRC)
 
 check: test glossary lint recommendations app-test
